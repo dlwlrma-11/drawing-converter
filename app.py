@@ -1,6 +1,93 @@
 """
-이미지 일괄 DXF 변환 시스템 v6.3 (도면팀-이영세)
-===============================================
+이미지 일괄 DXF 변환 시스템 v6.9 (도면팀-이영세) — 웹 배포본 (app.py)
+========================================================================
+🌐 본 파일은 GitHub + Streamlit Cloud 등 웹 배포 전용 버전입니다.
+   로컬 Windows 버전 (Auto_Web.py) 과 동일 코드이지만, Linux 환경에서는
+   ODA File Converter / AutoCAD 자동 연동이 자동으로 비활성화됩니다.
+   (Windows 가드: _IS_WINDOWS 체크가 모든 외부 도구 호출에 적용됨)
+
+[v6.9 변경사항] ★ 파일명 단순화 + DXF→DWG 일괄변환 버튼 제거 ★
+  ★ CHANGE: 파일명 규칙 단순화
+      - 기존: 원본이름_dxf변환.dxf / 원본이름_dxf변환.dwg
+      - 변경: 원본이름.dxf / 원본이름.dwg  (깔끔하고 직관적)
+      - 중복 시: 원본이름 (2).dwg, 원본이름 (3).dwg 자동 번호
+  ★ REMOVE: 결과 화면의 "DXF → DWG 일괄 변환" 버튼 섹션 제거
+      - 변환 시점에 이미 DWG로 저장되므로 중복 기능
+      - 메인 UI가 훨씬 깔끔해짐
+  ★ KEEP: AutoCAD 자동 정리 기능은 그대로 유지
+      - 🅰️ AutoCAD에서 첫 파일 자동 열기 (OVERKILL + PEDIT JOIN + 자동 저장)
+      - 🅰️ 모든 파일 AutoCAD 자동 정리 (일괄 처리)
+  ★ NEW: config.json 영구 저장/로드 시스템
+      - 저장 항목: ODA 경로, AutoCAD 경로, DWG 버전, SCR 옵션, 출력 형식
+      - 앱 껐다 켜도 설정 자동 복원 (재입력 불필요)
+      - 저장 위치: Auto_Web.py와 같은 폴더 (config.json)
+  ★ NEW: 사이드바 "💾 ODA·AutoCAD 경로 설정 저장" 버튼
+      - 한 번 저장하면 이후부터 자동 로드
+  ★ NEW: ODA·AutoCAD 자동 발견 시 config.json에도 자동 저장
+      - 직접 저장 버튼 안 눌러도 자동 발견되면 바로 저장됨
+  ★ NEW: 메인 화면 변환 버튼 위에 출력 형식 선택 라디오 추가
+      - 🏗️ DWG만 저장 (기본, 권장)
+      - 📐🏗️ DXF + DWG 둘 다 저장 (안전망)
+      → 사이드바 안 열어도 한눈에 보임. 앱 켜자마자 DWG 변환 가능
+  ★ CHANGE: 기본값을 'DWG만 저장'으로 변경 (기존: DXF만)
+  ★ CHANGE: 'DXF만 저장' 옵션 메인 UI에서 제거 (사이드바·내부 로직은 보존)
+      - 메인 화면에서는 DWG/둘다만 노출 — 사용자 의도와 일치
+  ★ CHANGE: 사이드바 출력 형식 라디오 삭제 (메인으로 이동했으니 중복 제거)
+  ★ NEW: ODA 설치 상태 배지 표시 (✅ 준비됨 / ❌ 미설치 / ⚠️ Windows 전용)
+      - 변환 버튼 옆에 한눈에 보이는 상태 표시
+      - ODA 미설치 시 친절한 설치 안내 expander 자동 표시
+  ★ 안전 fallback (기존 그대로 유지):
+      - ODA 없으면 DWG 요청해도 자동으로 DXF로 대체 저장 + 경고
+      - 한 파일만 DWG 실패해도 그 파일만 DXF로 폴백, 나머지는 계속
+[v6.6 변경사항] ★ 변환 시점 DWG 자동 저장 (사용자 요청 핵심 UX 개선) ★
+  ★ NEW: 📤 사이드바 "출력 형식 선택" 라디오 추가
+      🅳 DXF만 저장 (기본 동작)
+      🅴 DWG만 저장 (변환 직후 자동으로 DWG 생성, DXF 파일 안 만듦)
+      🅵 DXF + DWG 둘 다 저장 (ZIP에 두 파일 모두 포함)
+  ★ NEW: 변환 버튼 라벨/진행률 텍스트가 선택한 출력 형식에 따라 자동 변경
+      예: "📐 DXF 파일로 변환" → "🏗️ DWG 파일로 변환 (ODA 자동 호출)"
+  ★ NEW: 변환 루프 내부에서 DWG 자동 생성 (별도 버튼 클릭 불필요)
+      - convert_to_dxf_bytes() 직후 convert_dxf_to_dwg_via_oda() 자동 호출
+      - 출력 형식에 맞춰 ZIP 파일명도 자동 변경 (DXF_변환완료.zip / DWG_변환완료.zip / DXF_DWG_변환완료.zip)
+  ★ NEW: 개별 다운로드 버튼이 출력 형식에 따라 자동 적응
+      - DXF만/DWG만/둘다 — 각각 적절한 버튼 표시
+  ★ 안전 fallback:
+      - ODA Converter 미설치 + DWG 선택 시 → 자동으로 DXF만 저장 + 경고
+      - DWG 변환 실패 1개 발생 시 → 그 파일만 DXF로 fallback (전체 변환은 계속)
+[v6.5 변경사항] ★ DWG 직접 저장 + AutoCAD 자동 후처리 (Windows 전용) ★
+  ★ NEW: 🏗️ DXF → DWG 일괄 변환 (ODA File Converter 무료 도구 연동)
+      - AutoCAD 2000/2004/2007/2010/2013/2018 모든 버전 출력 지원
+      - 한글 경로 회피 자동 처리 (ASCII-only 임시 디렉터리 사용)
+      - DWG ZIP 일괄 다운로드 버튼 추가
+  ★ NEW: 🅰️ AutoCAD 자동 실행 + 자동 정리 SCR 스크립트
+      - OVERKILL (중복선 자동 제거, 풀버전 전용)
+      - PEDIT JOIN (분리된 polyline 자동 결합)
+      - ZOOM EXTENTS (도면 전체 보기 자동)
+      - PURGE (사용하지 않는 객체 정리, 선택)
+      - QSAVE (자동 저장)
+  ★ NEW: 🔧 사이드바 "DWG/AutoCAD 자동 연동" 설정 패널
+      - ODA Converter / acad.exe 경로 자동 탐색 + 수동 지정 가능
+      - DWG 출력 버전 선택 (R2018 ~ R2000)
+      - SCR 자동 정리 옵션 토글 5종
+[v6.4 변경사항] ★ 변환 품질 직접 개선 5종 + UI/UX 개선 3종 ★
+  ★ [개선 ①] 이진화 blockSize 자동 계산 (enhance_edge)
+      - 기존: blockSize=15 고정 → 고해상도(4K+) 도면에서 선 끊김 다발
+      - 개선: 짧은 변의 약 1.5% 자동 계산 (1000px→15, 2000px→31, 4000px→61)
+  ★ [개선 ②] MORPH_CLOSE 추가 (enhance_edge)
+      - 기존: OPEN만 적용 → 1~2px 미세 끊김선 연결 안됨
+      - 개선: OPEN→CLOSE 순서로 적용 → 스캔 도면 끊김 자동 연결
+  ★ [개선 ③] Closed Path 자동 인식 (_add_lwpolyline_auto)
+      - 기존: 사각형/원형 테두리도 open polyline → CAD 편집 불편
+      - 개선: 시작점-끝점 거리 3px 이내면 자동 closed (해치 fill 가능)
+  ★ [개선 ④] Adaptive Epsilon (_adaptive_epsilon)
+      - 기존: 모든 path에 동일 epsilon → 짧은 path 형태 왜곡, 긴 path 노드 폭증
+      - 개선: path 길이 비례 자동 조정 (짧은 path는 정밀, 긴 path는 단순화)
+  ★ [개선 ⑤] Smooth Window 자동 상한 (smooth_path)
+      - 기존: 짧은 path에 큰 window 적용 → 원/호 형태 손상
+      - 개선: window를 path 길이의 1/4로 자동 제한
+  ★ [UI ⑥] 퀵 변환 3단계 버튼 (⚡빠름/⚖️균형/🔬정밀)
+  ★ [UI ⑦] 슬라이더 숫자 직접 입력 (정밀 조정 가능)
+  ★ [UI ⑧] 고급 옵션 기본 접힘 (사이드바 가독성 향상)
 [v6.3 변경사항] ★ AI/UX/CAD 6대 기능 추가 ★
   ★ NEW: 🤖 AI Super-Resolution (FSRCNN_x2.pb) - 저해상도 자동 업스케일 → 벡터화 성공률 향상
   ★ NEW: 🎯 Arc fitting RANSAC - 노이즈에 강한 원/호 인식 (algebraic + RANSAC 자동 fallback)
@@ -72,10 +159,62 @@ import uuid
 import base64
 import sqlite3
 import datetime
+import subprocess      # 🆕 v6.5: ODA File Converter / AutoCAD 외부 프로그램 호출
+import tempfile        # 🆕 v6.5: DWG 변환 작업용 임시 디렉터리
+import shutil          # 🆕 v6.5: ODA / AutoCAD 실행파일 탐색 및 파일 복사
+import platform        # 🆕 v6.5: Windows 전용 기능 보호 가드
 from contextlib import contextmanager
 
 # ── 배경 이미지 base64 로드 (배너 / 메인 / 사이드바) ──
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_CONFIG_PATH = os.path.join(_BASE_DIR, "config.json")
+
+# ══════════════════════════════════════════════════════════════════
+# 🆕 v6.8: config.json 영구 저장/로드 — ODA·AutoCAD 경로 기억
+# 앱 껐다 켜도 경로 설정이 유지됩니다.
+# 저장 위치: Auto_Web.py와 같은 폴더의 config.json
+# ══════════════════════════════════════════════════════════════════
+_CONFIG_KEYS = {
+    "v65_oda_path":          "",          # ODA Converter 실행파일 경로
+    "v65_acad_path":         "",          # AutoCAD 실행파일 경로
+    "v65_dwg_version_code":  "ACAD2018",  # DWG 출력 버전
+    "v65_use_overkill":      True,
+    "v65_use_pedit_join":    True,
+    "v65_use_zoom_extents":  True,
+    "v65_use_purge":         False,
+    "v65_auto_save":         True,
+    "v66_output_format":     "dwg_only",  # 출력 형식 기본값
+}
+
+def _load_config():
+    """config.json에서 설정을 읽어 session_state에 로드. 없으면 기본값 사용."""
+    try:
+        if os.path.isfile(_CONFIG_PATH):
+            with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for k, default in _CONFIG_KEYS.items():
+                if k not in st.session_state:
+                    st.session_state[k] = data.get(k, default)
+        else:
+            # config.json 없으면 기본값으로 초기화
+            for k, default in _CONFIG_KEYS.items():
+                if k not in st.session_state:
+                    st.session_state[k] = default
+    except Exception:
+        for k, default in _CONFIG_KEYS.items():
+            if k not in st.session_state:
+                st.session_state[k] = default
+
+def _save_config():
+    """현재 session_state의 설정을 config.json에 저장."""
+    try:
+        data = {k: st.session_state.get(k, default)
+                for k, default in _CONFIG_KEYS.items()}
+        with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
 
 def _load_image_b64(candidates):
     """후보 파일명들 중 첫 번째로 존재하는 파일을 base64로 반환"""
@@ -93,16 +232,440 @@ _HERO_IMG_B64, _HERO_LOADED = _load_image_b64(["banner_bg.png", "배너배경.pn
 _MAIN_IMG_B64, _MAIN_LOADED = _load_image_b64(["main_bg.png", "메인배경.png", "2.png"])
 _SIDE_IMG_B64, _SIDE_LOADED = _load_image_b64(["sidebar_bg.png", "사이드배경.png", "3.png"])
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🆕 v6.5  DWG 직접 저장 + AutoCAD 자동 연동 모듈
+# ══════════════════════════════════════════════════════════════════════════════
+# - ODA File Converter (무료) 를 외부 프로세스로 호출하여 DXF → DWG 변환
+# - AutoCAD가 설치되어 있으면 SCR 스크립트와 함께 자동 실행 (OVERKILL + PEDIT JOIN + ZOOM E + QSAVE)
+# - Windows 전용 기능. 비-Windows 환경에서는 전체 비활성화되어 기존 동작 그대로 유지.
+# - 사용자 PC에 외부 프로그램이 설치되어 있지 않은 경우 안전 fallback (조용히 비활성화)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_IS_WINDOWS = platform.system().lower().startswith("win")
+
+# ODA File Converter 일반적 설치 경로 후보 (버전별)
+_ODA_CANDIDATE_PATHS = [
+    # 🆕 v6.7: 27.x 버전 추가
+    r"C:\Program Files\ODA\ODAFileConverter 27.1.0\ODAFileConverter.exe",
+    r"C:\Program Files\ODA\ODAFileConverter 27.0.0\ODAFileConverter.exe",
+    r"C:\Program Files\ODA\ODAFileConverter 26.5.0\ODAFileConverter.exe",
+    r"C:\Program Files\ODA\ODAFileConverter 26.4.0\ODAFileConverter.exe",
+    r"C:\Program Files\ODA\ODAFileConverter 25.5.0\ODAFileConverter.exe",
+    r"C:\Program Files\ODA\ODAFileConverter 25.4.0\ODAFileConverter.exe",
+    r"C:\Program Files\ODA\ODAFileConverter 24.12.0\ODAFileConverter.exe",
+    r"C:\Program Files\ODA\ODAFileConverter 24.11.0\ODAFileConverter.exe",
+    r"C:\Program Files\ODA\ODAFileConverter 24.10.0\ODAFileConverter.exe",
+    r"C:\Program Files\ODA\ODAFileConverter 23.12.0\ODAFileConverter.exe",
+    r"C:\Program Files\ODA\ODAFileConverter\ODAFileConverter.exe",
+    r"C:\Program Files (x86)\ODA\ODAFileConverter\ODAFileConverter.exe",
+]
+
+def _scan_oda_dir_dynamic():
+    """🆕 v6.7: C:\\Program Files\\ODA\\ 하위 폴더를 버전 무관하게 동적 스캔.
+    고정 버전 목록이 없어도 새 버전을 자동 발견한다.
+    """
+    if not _IS_WINDOWS:
+        return ""
+    for base in (r"C:\Program Files\ODA", r"C:\Program Files (x86)\ODA"):
+        if not os.path.isdir(base):
+            continue
+        try:
+            # ODAFileConverter로 시작하는 폴더를 최신 버전 순으로 정렬
+            sub_dirs = sorted(
+                [d for d in os.listdir(base) if d.lower().startswith("odafileconverter")],
+                reverse=True,  # 버전 내림차순 — 최신 우선
+            )
+            for sub in sub_dirs:
+                exe = os.path.join(base, sub, "ODAFileConverter.exe")
+                if os.path.isfile(exe):
+                    return exe
+        except OSError:
+            continue
+    return ""
+
+# AutoCAD 실행파일 일반적 경로 후보 (버전별)
+_ACAD_CANDIDATE_PATHS = [
+    r"C:\Program Files\Autodesk\AutoCAD 2027\acad.exe",   # 🆕 v6.8
+    r"C:\Program Files\Autodesk\AutoCAD 2026\acad.exe",
+    r"C:\Program Files\Autodesk\AutoCAD 2025\acad.exe",
+    r"C:\Program Files\Autodesk\AutoCAD 2024\acad.exe",
+    r"C:\Program Files\Autodesk\AutoCAD 2023\acad.exe",
+    r"C:\Program Files\Autodesk\AutoCAD 2022\acad.exe",
+    r"C:\Program Files\Autodesk\AutoCAD 2021\acad.exe",
+    r"C:\Program Files\Autodesk\AutoCAD 2020\acad.exe",
+    r"C:\Program Files\Autodesk\AutoCAD LT 2025\acadlt.exe",
+    r"C:\Program Files\Autodesk\AutoCAD LT 2024\acadlt.exe",
+    r"C:\Program Files\Autodesk\AutoCAD LT 2023\acadlt.exe",
+]
+
+def _scan_autocad_dir_dynamic():
+    """🆕 v6.8: C:\\Program Files\\Autodesk\\ 하위에서 acad.exe 자동 탐색.
+    버전 목록 업데이트 없이 AutoCAD 2028, 2029 등 미래 버전도 자동 발견.
+    'AutoCAD 20XX' 형식의 폴더만 선택 (Raster Design 등 비버전 폴더 제외).
+    """
+    if not _IS_WINDOWS:
+        return ""
+    base = r"C:\Program Files\Autodesk"
+    if not os.path.isdir(base):
+        return ""
+    try:
+        import re
+        # "AutoCAD 20XX" 패턴만 선택 (숫자 연도 포함된 폴더)
+        sub_dirs = sorted(
+            [d for d in os.listdir(base)
+             if re.match(r"AutoCAD\s+20\d{2}$", d, re.IGNORECASE)],
+            reverse=True,   # 최신 연도 우선
+        )
+        for sub in sub_dirs:
+            exe = os.path.join(base, sub, "acad.exe")
+            if os.path.isfile(exe):
+                return exe
+        # LT 버전도 시도 ("AutoCAD LT 20XX")
+        lt_dirs = sorted(
+            [d for d in os.listdir(base)
+             if re.match(r"AutoCAD\s+LT\s+20\d{2}$", d, re.IGNORECASE)],
+            reverse=True,
+        )
+        for sub in lt_dirs:
+            exe = os.path.join(base, sub, "acadlt.exe")
+            if os.path.isfile(exe):
+                return exe
+    except OSError:
+        pass
+    return ""
+
+# ODA가 지원하는 출력 AutoCAD 버전 코드
+_ODA_VERSION_MAP = {
+    "AutoCAD 2018 (R2018)": "ACAD2018",
+    "AutoCAD 2013 (R2013)": "ACAD2013",
+    "AutoCAD 2010 (R2010)": "ACAD2010",
+    "AutoCAD 2007 (R2007)": "ACAD2007",
+    "AutoCAD 2004 (R2004)": "ACAD2004",
+    "AutoCAD 2000 (R2000)": "ACAD2000",
+}
+
+
+def find_oda_converter(user_override_path=""):
+    """🆕 v6.5 / 개선 v6.7: ODA File Converter 실행파일을 자동 탐색.
+
+    탐색 순서:
+      1. 사용자가 직접 지정한 경로 — 폴더 입력 시 exe 자동 보정
+      2. 환경변수 ODA_FILE_CONVERTER
+      3. 버전별 고정 후보 경로 목록
+      4. C:\\Program Files\\ODA\\ 동적 폴더 스캔 (버전 무관, 최신 우선) ← v6.7 신규
+      5. PATH 에 등록되어 있는 경우 (shutil.which)
+
+    Returns:
+        실행 파일 경로 (str) 또는 빈 문자열 ("" — 미발견)
+    """
+    if not _IS_WINDOWS:
+        return ""
+
+    # 1) 사용자 지정 경로 — 폴더를 입력해도 exe 자동 보정 (v6.7)
+    if user_override_path:
+        p = user_override_path.strip().strip('"')
+        if os.path.isfile(p):
+            return p
+        # 폴더 경로를 입력한 경우 exe를 자동으로 붙여서 재시도
+        exe_guess = os.path.join(p, "ODAFileConverter.exe")
+        if os.path.isfile(exe_guess):
+            return exe_guess
+
+    # 2) 환경변수
+    env_path = os.environ.get("ODA_FILE_CONVERTER", "").strip().strip('"')
+    if env_path and os.path.isfile(env_path):
+        return env_path
+
+    # 3) 고정 후보 경로
+    for p in _ODA_CANDIDATE_PATHS:
+        if os.path.isfile(p):
+            return p
+
+    # 4) 🆕 v6.7: 동적 폴더 스캔 (버전 목록 업데이트 없이 미래 버전도 자동 발견)
+    dynamic = _scan_oda_dir_dynamic()
+    if dynamic:
+        return dynamic
+
+    # 5) PATH 검색
+    which = shutil.which("ODAFileConverter") or shutil.which("ODAFileConverter.exe")
+    if which:
+        return which
+
+    return ""
+
+
+def find_autocad_exe(user_override_path=""):
+    """🆕 v6.5 / 개선 v6.8: AutoCAD 실행파일 자동 탐색.
+
+    탐색 순서:
+      1. 사용자 지정 경로 — 폴더 입력 시 acad.exe 자동 보정 (v6.8)
+      2. 환경변수 AUTOCAD_EXE
+      3. 버전별 고정 후보 경로
+      4. C:\\Program Files\\Autodesk\\ 동적 스캔 (버전 무관, 최신 우선) ← v6.8 신규
+      5. PATH 검색 (shutil.which)
+
+    Returns:
+        실행 파일 경로 (str) 또는 빈 문자열
+    """
+    if not _IS_WINDOWS:
+        return ""
+
+    # 1) 사용자 지정 경로 — 폴더 입력 시 acad.exe 자동 보정
+    if user_override_path:
+        p = user_override_path.strip().strip('"')
+        if os.path.isfile(p):
+            return p
+        # 폴더를 입력한 경우: acad.exe 자동으로 붙여 재시도
+        for exe_name in ("acad.exe", "acadlt.exe"):
+            exe_guess = os.path.join(p, exe_name)
+            if os.path.isfile(exe_guess):
+                return exe_guess
+
+    # 2) 환경변수
+    env_path = os.environ.get("AUTOCAD_EXE", "").strip().strip('"')
+    if env_path and os.path.isfile(env_path):
+        return env_path
+
+    # 3) 고정 후보 경로
+    for p in _ACAD_CANDIDATE_PATHS:
+        if os.path.isfile(p):
+            return p
+
+    # 4) 동적 폴더 스캔 (v6.8 — 버전 무관 자동 발견)
+    dynamic = _scan_autocad_dir_dynamic()
+    if dynamic:
+        return dynamic
+
+    # 5) PATH 검색
+    which = shutil.which("acad") or shutil.which("acad.exe")
+    if which:
+        return which
+
+    return ""
+
+
+def convert_dxf_to_dwg_via_oda(dxf_bytes, dwg_filename_stem,
+                               oda_exe_path="",
+                               target_version="ACAD2018",
+                               timeout_sec=60):
+    """🆕 v6.5: DXF 바이트 → DWG 바이트 변환 (ODA File Converter 호출).
+
+    ODA File Converter CLI 호환 인자:
+        ODAFileConverter.exe <inDir> <outDir> <outVer> <outFormat> <recurse> <audit> [<filter>]
+
+    Args:
+        dxf_bytes        : 변환할 DXF의 바이트 데이터
+        dwg_filename_stem: 출력 파일 이름(확장자 제외). 예: "도면01"
+        oda_exe_path     : ODA Converter 실행 파일 경로 ("" 이면 자동 탐색)
+        target_version   : "ACAD2018" / "ACAD2013" / "ACAD2010" 등
+        timeout_sec      : 외부 프로세스 최대 대기 시간 (초)
+
+    Returns:
+        (dwg_bytes 또는 None, message_str)
+    """
+    if not _IS_WINDOWS:
+        return None, "❌ DWG 변환은 Windows 환경에서만 지원됩니다."
+
+    oda = oda_exe_path or find_oda_converter()
+    if not oda:
+        return None, (
+            "❌ ODA File Converter를 찾을 수 없습니다.\n"
+            "    👉 https://www.opendesign.com/guestfiles/oda_file_converter 에서 무료 설치 후\n"
+            "       사이드바 '🔧 DWG/AutoCAD 설정'에서 경로를 지정해주세요."
+        )
+
+    # 1) 한글 경로 회피용 임시 작업 디렉터리 생성 (ASCII-only)
+    #    ODA File Converter는 한글 경로에서 종종 실패하므로 tempdir 안에서 작업
+    with tempfile.TemporaryDirectory(prefix="dwg_") as work_root:
+        in_dir  = os.path.join(work_root, "in")
+        out_dir = os.path.join(work_root, "out")
+        os.makedirs(in_dir,  exist_ok=True)
+        os.makedirs(out_dir, exist_ok=True)
+
+        # 입력 DXF 파일명을 ASCII-only로 강제 (한글이 들어가면 ODA가 깨질 수 있음)
+        safe_stem = "input_dxf_" + uuid.uuid4().hex[:8]
+        in_dxf_path = os.path.join(in_dir, safe_stem + ".dxf")
+        try:
+            with open(in_dxf_path, "wb") as f:
+                f.write(dxf_bytes)
+        except Exception as e:
+            return None, f"❌ 임시 DXF 파일 쓰기 실패: {e}"
+
+        # 2) ODA File Converter CLI 호출
+        #    인자: inDir outDir outVer outFormat recurse audit
+        #    outFormat: 0=DWG, 1=DXF
+        cmd = [
+            oda,
+            in_dir,
+            out_dir,
+            str(target_version),
+            "DWG",      # 출력 형식: DWG
+            "0",        # recurse: 하위 폴더 검색 안함
+            "1",        # audit: 자동 검사/복구
+        ]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=int(timeout_sec),
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return None, f"❌ ODA 변환 시간초과 ({timeout_sec}초). 더 큰 파일은 timeout 늘려주세요."
+        except FileNotFoundError:
+            return None, f"❌ ODA 실행 실패: 경로를 다시 확인해주세요. ({oda})"
+        except Exception as e:
+            return None, f"❌ ODA 실행 중 예외 발생: {e}"
+
+        # 3) 변환 결과 확인
+        out_dwg_path = os.path.join(out_dir, safe_stem + ".dwg")
+        if not os.path.isfile(out_dwg_path):
+            # ODA는 stdout/stderr가 비어 있어도 실패하는 경우가 있어 디렉터리 점검
+            files_in_out = os.listdir(out_dir) if os.path.isdir(out_dir) else []
+            err_msg = (
+                f"❌ DWG 변환 실패: 출력 파일이 생성되지 않았습니다.\n"
+                f"    return code: {result.returncode}\n"
+                f"    out dir: {files_in_out}"
+            )
+            return None, err_msg
+
+        try:
+            with open(out_dwg_path, "rb") as f:
+                dwg_bytes = f.read()
+        except Exception as e:
+            return None, f"❌ DWG 파일 읽기 실패: {e}"
+
+        return dwg_bytes, f"✅ DWG 변환 성공 ({target_version}, {len(dwg_bytes):,} bytes)"
+
+
+def build_autocad_cleanup_scr(use_overkill=True, use_pedit_join=True,
+                              use_zoom_extents=True, use_purge=False, auto_save=True):
+    """🆕 v6.5: AutoCAD 자동 정리용 SCR 스크립트 생성.
+
+    SCR(Script) = AutoCAD 명령어 줄을 한 줄씩 자동 실행시키는 텍스트 파일.
+
+    Args:
+        use_overkill    : OVERKILL 명령 실행 (중복선 자동 제거) — AutoCAD 풀버전만
+        use_pedit_join  : PEDIT 자동 JOIN (분리된 polyline 자동 연결)
+        use_zoom_extents: ZOOM EXTENTS 자동 실행 (도면 전체 보기)
+        use_purge       : PURGE All (사용하지 않는 객체 자동 제거)
+        auto_save       : QSAVE 자동 저장
+
+    Returns:
+        SCR 스크립트 내용 (str)
+    """
+    lines = []
+    # 화면 정리
+    lines.append("_.FILEDIA 0")    # 파일 대화상자 비활성화 (스크립트 안정성)
+    lines.append("_.CMDDIA 0")     # 명령 대화상자 비활성화
+
+    if use_zoom_extents:
+        lines.append("_.ZOOM _E")  # Extents (도면 전체 보기)
+
+    if use_overkill:
+        # OVERKILL: 중복/겹친 선 자동 제거 — AutoCAD 풀버전 전용
+        # _.OVERKILL ALL <엔터> <엔터> = 모든 객체 선택 → 옵션 그대로 → 실행
+        lines.append("_.-OVERKILL")  # 하이픈은 dialog 없이 명령창 모드
+        lines.append("ALL")
+        lines.append("")             # 선택 완료
+        lines.append("")             # 옵션 기본값 그대로
+
+    if use_pedit_join:
+        # PEDIT Multiple Join: 분리된 라인/폴리라인을 자동으로 polyline 으로 결합
+        lines.append("_.-PEDIT")
+        lines.append("_M")           # Multiple
+        lines.append("ALL")
+        lines.append("")             # 선택 완료
+        lines.append("_Y")           # 객체를 polyline 으로 변환할지: Yes
+        lines.append("_J")           # Join
+        lines.append("")             # 옵션 기본값
+        lines.append("")             # 종료
+
+    if use_purge:
+        lines.append("_.-PURGE")
+        lines.append("_A")           # All
+        lines.append("*")            # 전체 객체
+        lines.append("_N")           # 확인 안 함
+
+    if auto_save:
+        lines.append("_.QSAVE")      # 빠른 저장
+
+    # 다시 dialog 복구
+    lines.append("_.FILEDIA 1")
+    lines.append("_.CMDDIA 1")
+
+    return "\n".join(lines) + "\n"
+
+
+def open_in_autocad(dxf_or_dwg_path, run_cleanup=True,
+                    use_overkill=True, use_pedit_join=True,
+                    use_zoom_extents=True, use_purge=False, auto_save=True,
+                    acad_exe_path=""):
+    """🆕 v6.5: 파일을 AutoCAD로 열고, 옵션에 따라 자동 정리 스크립트 실행.
+
+    Args:
+        dxf_or_dwg_path: 열고자 하는 DXF/DWG 절대경로
+        run_cleanup    : True면 SCR 자동 실행
+        나머지         : SCR 옵션 (build_autocad_cleanup_scr 참조)
+        acad_exe_path  : AutoCAD 실행파일 경로 ("" 이면 자동 탐색)
+
+    Returns:
+        (성공여부 bool, 메시지 str)
+    """
+    if not _IS_WINDOWS:
+        return False, "❌ AutoCAD 자동 실행은 Windows 환경에서만 지원됩니다."
+
+    if not os.path.isfile(dxf_or_dwg_path):
+        return False, f"❌ 파일을 찾을 수 없습니다: {dxf_or_dwg_path}"
+
+    acad = acad_exe_path or find_autocad_exe()
+    if not acad:
+        return False, (
+            "❌ AutoCAD 실행파일을 찾을 수 없습니다.\n"
+            "    👉 AutoCAD가 설치되지 않았거나, 사이드바 '🔧 DWG/AutoCAD 설정'에서\n"
+            "       acad.exe 경로를 직접 지정해주세요."
+        )
+
+    try:
+        if run_cleanup:
+            # SCR 스크립트를 파일과 같은 폴더에 임시로 저장 (스크립트 실행 후 자동 삭제는 AutoCAD가 알아서 함)
+            scr_content = build_autocad_cleanup_scr(
+                use_overkill=use_overkill,
+                use_pedit_join=use_pedit_join,
+                use_zoom_extents=use_zoom_extents,
+                use_purge=use_purge,
+                auto_save=auto_save,
+            )
+            scr_path = os.path.join(
+                os.path.dirname(os.path.abspath(dxf_or_dwg_path)),
+                f"_auto_cleanup_{uuid.uuid4().hex[:6]}.scr"
+            )
+            with open(scr_path, "w", encoding="utf-8") as f:
+                f.write(scr_content)
+            # AutoCAD 실행: 파일 + SCR
+            # /b 스위치: 배치 스크립트 자동 실행
+            subprocess.Popen([acad, "/b", scr_path, dxf_or_dwg_path])
+            return True, f"✅ AutoCAD 실행됨 (자동 정리 SCR 함께 실행)\n   📄 {os.path.basename(dxf_or_dwg_path)}"
+        else:
+            # 그냥 파일만 열기
+            subprocess.Popen([acad, dxf_or_dwg_path])
+            return True, f"✅ AutoCAD 실행됨\n   📄 {os.path.basename(dxf_or_dwg_path)}"
+    except FileNotFoundError:
+        return False, f"❌ AutoCAD 실행 실패: 경로 확인 필요. ({acad})"
+    except Exception as e:
+        return False, f"❌ AutoCAD 실행 중 예외: {e}"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# v6.5 DWG/AutoCAD 모듈 끝
+# ══════════════════════════════════════════════════════════════════════════════
+
 import cv2
 import ezdxf
 import numpy as np
 import streamlit as st
 import streamlit.components.v1 as components
-try:
-    import easyocr
-    _EASYOCR_OK = True
-except ImportError:
-    _EASYOCR_OK = False
+import easyocr
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -1359,19 +1922,14 @@ _init_sliders()
 
 @st.cache_resource
 def load_ocr_model():
-    if not _EASYOCR_OK:
-        return None
-    try:
-        return easyocr.Reader(['ko', 'en'], gpu=False)
-    except Exception:
-        return None
+    return easyocr.Reader(['ko', 'en'], gpu=False)
 
 
 # ══════════════════════════════════════════
 #  📊  SQLite 사용자 통계 시스템 (v4.0 이력 조회 강화)
 # ══════════════════════════════════════════
 
-DB_PATH = "/tmp/usage_stats.db"  # 웹 배포: /tmp/ 사용
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "usage_stats.db")
 
 @contextmanager
 def _db():
@@ -2229,8 +2787,16 @@ def apply_crop_to_bytes(img_bytes, top_pct, bottom_pct, left_pct, right_pct):
 
 
 def smooth_path(pts: np.ndarray, window: int) -> np.ndarray:
+    """🆕 v6.4 [개선 ⑤]: window를 path 길이의 1/4 이하로 자동 제한.
+    짧은 path(원/호 등)에 큰 window가 적용되어 형태가 왜곡되는 현상 방지.
+    """
     if len(pts) < window or window < 4: return pts
-    w  = max(3, window | 1)
+    # 🆕 v6.4: path 길이 대비 window 자동 상한 (1/4 이하, 홀수)
+    auto_max = max(3, len(pts) // 4)
+    if auto_max % 2 == 0:
+        auto_max -= 1
+    w_in = min(int(window), int(auto_max))
+    w  = max(3, w_in | 1)
     if len(pts) <= w: w = len(pts) if len(pts) % 2 != 0 else len(pts) - 1
     if w < 3: return pts
     try:
@@ -2243,6 +2809,68 @@ def smooth_path(pts: np.ndarray, window: int) -> np.ndarray:
     xs[0], xs[-1] = pts[0, 0], pts[-1, 0]
     ys[0], ys[-1] = pts[0, 1], pts[-1, 1]
     return np.column_stack([xs, ys])
+
+
+# ══════════════════════════════════════════════════════════════════
+#  🆕 v6.4 신규 헬퍼: Closed Path 자동 인식 + Adaptive Epsilon
+# ══════════════════════════════════════════════════════════════════
+def _adaptive_epsilon(pts, base_eps, min_eps=0.3, max_eps=5.0, ref_len=200.0):
+    """🆕 v6.4 [개선 ④]: path 길이에 따라 epsilon을 자동 조정.
+    - 짧은 path (≤60px) → epsilon을 base의 0.3배 (형태 보존)
+    - 기준 길이 (200px) → epsilon을 base 그대로
+    - 긴 path (≥400px) → epsilon을 base의 2배 (불필요한 노드 감소)
+    """
+    try:
+        if pts is None or len(pts) < 2:
+            return float(base_eps)
+        diffs = np.diff(np.asarray(pts, dtype=float), axis=0)
+        path_len = float(np.sum(np.hypot(diffs[:, 0], diffs[:, 1])))
+        if path_len <= 0:
+            return float(base_eps)
+        ratio = float(np.clip(path_len / float(ref_len), 0.3, 2.0))
+        return float(np.clip(base_eps * ratio, min_eps, max_eps))
+    except Exception:
+        return float(base_eps)
+
+
+def _is_path_closed(pts_xy_pixel, close_threshold_px=3.0):
+    """🆕 v6.4 [개선 ③]: 픽셀 좌표 기준으로 path가 닫힌(closed) 도형인지 판정.
+    시작점과 끝점의 픽셀 거리가 close_threshold_px 이내이면 닫힌 도형으로 본다.
+    (DXF mm 좌표가 아니라 픽셀 좌표 기준으로 판정 → scale 영향 없음)
+    """
+    try:
+        if pts_xy_pixel is None or len(pts_xy_pixel) < 3:
+            return False
+        p0 = pts_xy_pixel[0]
+        pN = pts_xy_pixel[-1]
+        d = math.hypot(float(p0[0]) - float(pN[0]), float(p0[1]) - float(pN[1]))
+        return d < float(close_threshold_px)
+    except Exception:
+        return False
+
+
+def _add_lwpolyline_auto(msp, pts_xy_pixel, pts_dxf_2d, dxfattribs,
+                         close_threshold_px=3.0):
+    """🆕 v6.4 [개선 ③]: lwpolyline 추가 + 닫힌 도형이면 자동 close().
+    - pts_xy_pixel: 픽셀 좌표 (닫힘 판정용)
+    - pts_dxf_2d  : 이미 to_pt()로 변환된 DXF 좌표 리스트
+    반환: 추가된 entity. 닫힌 도형이면 .close() 처리되어 AutoCAD에서
+          '닫힌 폴리라인'으로 인식됨 (hatch fill 등 가능).
+    """
+    if not pts_dxf_2d or len(pts_dxf_2d) < 2:
+        return None
+    pline = msp.add_lwpolyline(pts_dxf_2d, dxfattribs=dxfattribs)
+    if _is_path_closed(pts_xy_pixel, close_threshold_px=close_threshold_px):
+        try:
+            pline.close(True)
+        except Exception:
+            try:
+                # ezdxf 일부 버전 호환 fallback
+                pline.dxf.flags = pline.dxf.flags | 1
+            except Exception:
+                pass
+    return pline
+
 
 def fit_circle_algebraic(pts):
     if len(pts) < 3: return None, None, float('inf')
@@ -3236,7 +3864,20 @@ def render_dxf_preview(dxf_bytes, bg_color="#1a1d2e", line_color="#e0e4ef"):
 #  🔬  Edge 강화 + KD-tree 중복선 제거
 # ══════════════════════════════════════════
 
+def _calc_adaptive_block_size(h, w):
+    """🆕 v6.4 [개선 ①]: 이미지 해상도에 비례한 adaptiveThreshold blockSize 자동 계산.
+    - 짧은 변의 약 1.5% 길이를 blockSize로 사용 (최소 11, 반드시 홀수)
+    - 1000px 이미지 → ~15px, 2000px → ~31px, 4000px → ~61px
+    - 고해상도 도면에서 선이 끊기는 현상 방지
+    """
+    short_side = min(int(h), int(w))
+    bs = max(11, int(short_side * 0.015))
+    if bs % 2 == 0:
+        bs += 1
+    return bs
+
 def enhance_edge(img_gray, sharpen_strength=1.0):
+    """🆕 v6.4 개선 ①②: blockSize 자동 + MORPH_CLOSE 추가 (미세 끊김 방지)"""
     if sharpen_strength > 0.01:
         blurred = cv2.GaussianBlur(img_gray, (0, 0), sigmaX=2.0)
         sharpened = cv2.addWeighted(img_gray, 1.0 + sharpen_strength, blurred,  -sharpen_strength, 0)
@@ -3244,9 +3885,22 @@ def enhance_edge(img_gray, sharpen_strength=1.0):
     else:
         sharpened = img_gray.copy()
 
-    binary_adapt = cv2.adaptiveThreshold(sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, blockSize=15, C=8)
-    kernel = np.ones((2, 2), np.uint8)
-    return cv2.morphologyEx(binary_adapt, cv2.MORPH_OPEN, kernel)
+    # 🆕 v6.4 [개선 ①]: blockSize를 해상도 기반으로 자동 계산 (기존: 고정 15)
+    h_img, w_img = img_gray.shape[:2]
+    block_size = _calc_adaptive_block_size(h_img, w_img)
+    binary_adapt = cv2.adaptiveThreshold(
+        sharpened, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,
+        blockSize=block_size, C=8
+    )
+    # 🆕 v6.4 [개선 ②]: OPEN → CLOSE 순서로 적용
+    #   OPEN  : 작은 노이즈 점 제거
+    #   CLOSE : 1~2px 미세하게 끊긴 선 자동 연결 (스캔 도면에 특히 효과)
+    kernel_open  = np.ones((2, 2), np.uint8)
+    kernel_close = np.ones((3, 3), np.uint8)
+    cleaned = cv2.morphologyEx(binary_adapt, cv2.MORPH_OPEN,  kernel_open)
+    cleaned = cv2.morphologyEx(cleaned,       cv2.MORPH_CLOSE, kernel_close)
+    return cleaned
 
 def remove_duplicate_paths(paths, merge_dist=3.0):
     if len(paths) <= 1: return paths
@@ -3652,11 +4306,21 @@ def convert_to_dxf_bytes(
                     try:
                         msp.add_spline(fit_points=[to_pt(x, y) for x, y in sampled], dxfattribs={"layer": _target_layer})
                     except Exception:
-                        sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), s_eps, False).reshape(-1, 2)
-                        if len(sim) >= 2: msp.add_lwpolyline([to_pt(x, y) for x, y in sim], dxfattribs={"layer": _target_layer})
+                        # 🆕 v6.4 [개선 ④]: adaptive epsilon  /  [개선 ③]: closed path 자동 인식
+                        _eps_adj = _adaptive_epsilon(smoothed, s_eps)
+                        sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, False).reshape(-1, 2)
+                        if len(sim) >= 2:
+                            _add_lwpolyline_auto(msp, sim,
+                                [to_pt(x, y) for x, y in sim],
+                                dxfattribs={"layer": _target_layer})
                 else:
-                    sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), s_eps, False).reshape(-1, 2)
-                    if len(sim) >= 2: msp.add_lwpolyline([to_pt(x, y) for x, y in sim], dxfattribs={"layer": _target_layer})
+                    # 🆕 v6.4 [개선 ④]: adaptive epsilon  /  [개선 ③]: closed path 자동 인식
+                    _eps_adj = _adaptive_epsilon(smoothed, s_eps)
+                    sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, False).reshape(-1, 2)
+                    if len(sim) >= 2:
+                        _add_lwpolyline_auto(msp, sim,
+                            [to_pt(x, y) for x, y in sim],
+                            dxfattribs={"layer": _target_layer})
                 report["lines"] += 1
 
     elif image_type == "깔끔한 디지털 선화":
@@ -3690,8 +4354,13 @@ def convert_to_dxf_bytes(
                 smoothed = smooth_path_with_anchors(p, s_win, anchors)
             else:
                 smoothed = smooth_path(p, s_win)
-            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), s_eps, False).reshape(-1, 2)
-            if len(sim) >= 2: msp.add_lwpolyline([to_pt(x, y) for x, y in sim], dxfattribs={"layer": layer_name})
+            # 🆕 v6.4 [개선 ④]: adaptive epsilon  /  [개선 ③]: closed path 자동 인식
+            _eps_adj = _adaptive_epsilon(smoothed, s_eps)
+            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, False).reshape(-1, 2)
+            if len(sim) >= 2:
+                _add_lwpolyline_auto(msp, sim,
+                    [to_pt(x, y) for x, y in sim],
+                    dxfattribs={"layer": layer_name})
             report["lines"] += 1
 
     elif image_type == "일반 이미지(풍성한 표현,두줄)":
@@ -3727,9 +4396,13 @@ def convert_to_dxf_bytes(
                 smoothed = smooth_path_with_anchors(p, s_win, anchors)
             else:
                 smoothed = smooth_path(p, s_win)
-            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), epsilon, False).reshape(-1, 2)
+            # 🆕 v6.4 [개선 ④]: adaptive epsilon  /  [개선 ③]: closed path 자동 인식
+            _eps_adj = _adaptive_epsilon(smoothed, epsilon)
+            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, False).reshape(-1, 2)
             if len(sim) >= 2:
-                msp.add_lwpolyline([to_pt(x, y) for x, y in sim], dxfattribs={"layer": layer_name})
+                _add_lwpolyline_auto(msp, sim,
+                    [to_pt(x, y) for x, y in sim],
+                    dxfattribs={"layer": layer_name})
             report["lines"] += 1
 
     else:
@@ -3762,8 +4435,13 @@ def convert_to_dxf_bytes(
                 smoothed = smooth_path_with_anchors(p, s_win, anchors)
             else:
                 smoothed = smooth_path(p, s_win)
-            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), s_eps, False).reshape(-1, 2)
-            if len(sim) >= 2: msp.add_lwpolyline([to_pt(x, y) for x, y in sim], dxfattribs={"layer": layer_name})
+            # 🆕 v6.4 [개선 ④]: adaptive epsilon  /  [개선 ③]: closed path 자동 인식
+            _eps_adj = _adaptive_epsilon(smoothed, s_eps)
+            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, False).reshape(-1, 2)
+            if len(sim) >= 2:
+                _add_lwpolyline_auto(msp, sim,
+                    [to_pt(x, y) for x, y in sim],
+                    dxfattribs={"layer": layer_name})
             report["lines"] += 1
 
     # 🆕 v6.3: OCR 결과를 MTEXT 엔티티로 (한글 멀티라인 + CAD 편집성)
@@ -3896,12 +4574,15 @@ for _ci, _citem in enumerate(_chart_data):
 #  🌐  사이드바
 # ══════════════════════════════════════════
 
+# 🆕 v6.8: 앱 시작 시 config.json 자동 로드 (ODA·AutoCAD 경로 복원)
+_load_config()
+
 with st.sidebar:
     # ── DXF 변환 옵션 헤더 ──
     st.markdown("""
     <div class="sb-compact-header" style="margin-top:-16px !important;">
         <div class="sb-title">📐 DXF 변환 옵션</div>
-        <div class="sb-subtitle">USER-PRESETS · AI-RECOMMEND · ALPHA-SLIDER · v6.2</div>
+        <div class="sb-subtitle">★ 웹배포본 · CLEAN-FILENAME · v6.9</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -3930,6 +4611,161 @@ with st.sidebar:
                     f"</div>"
                 )
             st.markdown(_sb_rows, unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════
+    # 🆕 v6.5: DWG/AutoCAD 자동 연동 설정 (사이드바)
+    # ══════════════════════════════════════════════════════════════
+    with st.expander("🔧 DWG / AutoCAD 자동 연동 (v6.5 ★)", expanded=False):
+        if not _IS_WINDOWS:
+            st.info(
+                "🌐 **웹 배포본 안내**\n\n"
+                "DWG 자동 변환과 AutoCAD 자동 후처리는 **Windows 로컬 환경 전용**입니다.\n\n"
+                "현재 이 앱은 **Linux 서버**에서 실행 중이므로 모든 결과가 **DXF 파일**로 제공됩니다.\n\n"
+                "👉 **DXF는 AutoCAD에서 정상적으로 열립니다.** AutoCAD에서 DWG로 다시 저장하시면 됩니다.\n\n"
+                "💡 DWG 자동 변환이 꼭 필요하시면 로컬 Windows에서 Auto_Web.py를 직접 실행해주세요."
+            )
+        else:
+            st.markdown(
+                "<div style='font-size:0.72rem;color:#5a7a96;margin-bottom:6px;line-height:1.4;'>"
+                "✨ DXF를 <b>DWG로 자동 변환</b>하고, AutoCAD를 자동 실행해서 "
+                "<b>중복선 제거(OVERKILL) + 폴리라인 결합(PEDIT JOIN)</b>까지 한 번에 처리합니다.<br>"
+                "사용 전에 ODA File Converter (무료) 또는 AutoCAD가 설치되어 있어야 합니다."
+                "</div>",
+                unsafe_allow_html=True
+            )
+
+            # 1) ODA File Converter (DWG 변환용)
+            st.markdown("**📦 ODA File Converter (DWG 변환)**")
+            _oda_auto = find_oda_converter("")
+            if _oda_auto:
+                st.success(f"✅ 자동 발견: `{os.path.basename(_oda_auto)}`")
+                st.caption(f"📁 {_oda_auto}")
+                # 🆕 v6.8: 자동 발견 시 session_state + config 모두 갱신
+                if st.session_state.get("v65_oda_path") != _oda_auto:
+                    st.session_state["v65_oda_path"] = _oda_auto
+                    _save_config()
+            else:
+                st.info(
+                    "ℹ️ ODA File Converter가 자동 발견되지 않았습니다.\n\n"
+                    "👉 무료 다운로드: https://www.opendesign.com/guestfiles/oda_file_converter"
+                )
+                _oda_manual = st.text_input(
+                    "🔍 ODA 경로 직접 지정 (폴더 또는 exe 파일)",
+                    value=st.session_state.get("v65_oda_path", ""),
+                    placeholder=r"예: C:\Program Files\ODA\ODAFileConverter 27.1.0",
+                    key="v65_oda_path_input",
+                    help=(
+                        "폴더 경로만 입력해도 됩니다 — ODAFileConverter.exe를 자동으로 찾습니다.\n"
+                        r"예시: C:\Program Files\ODA\ODAFileConverter 27.1.0"
+                    )
+                )
+                if _oda_manual:
+                    # 🆕 v6.7: 폴더 입력 시 exe 자동 보정
+                    _resolved = find_oda_converter(_oda_manual)
+                    if _resolved:
+                        st.session_state["v65_oda_path"] = _resolved
+                        st.success(f"✅ 경로 인식됨: `{_resolved}`")
+                    else:
+                        # exe를 직접 붙여도 없으면 구체적 안내
+                        _exe_guess = os.path.join(_oda_manual.strip().strip('"'), "ODAFileConverter.exe")
+                        st.error(
+                            f"❌ ODAFileConverter.exe를 찾을 수 없습니다.\n\n"
+                            f"확인 경로: `{_exe_guess}`\n\n"
+                            f"💡 파일 탐색기에서 **ODAFileConverter.exe** 파일을 찾아서\n"
+                            f"그 파일까지의 전체 경로를 붙여넣으세요."
+                        )
+
+            # 2) DWG 출력 버전 선택
+            _dwg_ver_label = st.selectbox(
+                "📐 DWG 출력 버전",
+                list(_ODA_VERSION_MAP.keys()),
+                index=0,
+                key="v65_dwg_version",
+                help="대상 AutoCAD 버전에 맞춰 선택하세요. 일반적으로 2018 (R2018)을 추천합니다."
+            )
+            st.session_state["v65_dwg_version_code"] = _ODA_VERSION_MAP[_dwg_ver_label]
+
+            # 🆕 v6.7: 출력 형식 라디오는 메인 화면 변환 버튼 위로 이동됨
+            #         (사이드바 안 열어도 보이도록)
+
+            st.markdown("---")
+
+            # 3) AutoCAD 실행파일 (자동 후처리용)
+            st.markdown("**🅰️ AutoCAD 실행파일 (자동 후처리)**")
+            _acad_auto = find_autocad_exe("")
+            if _acad_auto:
+                st.success(f"✅ 자동 발견: `{os.path.basename(_acad_auto)}`")
+                st.caption(f"📁 {_acad_auto}")
+                # 🆕 v6.8: 자동 발견 시 session_state + config 모두 갱신
+                if st.session_state.get("v65_acad_path") != _acad_auto:
+                    st.session_state["v65_acad_path"] = _acad_auto
+                    _save_config()
+            else:
+                _acad_manual = st.text_input(
+                    "🔍 AutoCAD 경로 직접 지정 (폴더 또는 exe 파일)",
+                    value=st.session_state.get("v65_acad_path", ""),
+                    placeholder=r"예: C:\Program Files\Autodesk\AutoCAD 2027",
+                    key="v65_acad_path_input",
+                    help=(
+                        "폴더 경로만 입력해도 됩니다 — acad.exe를 자동으로 찾습니다.\n"
+                        r"예시: C:\Program Files\Autodesk\AutoCAD 2027"
+                    )
+                )
+                if _acad_manual:
+                    # 🆕 v6.8: ODA와 동일하게 폴더 입력 시 exe 자동 보정
+                    _resolved_acad = find_autocad_exe(_acad_manual)
+                    if _resolved_acad:
+                        st.session_state["v65_acad_path"] = _resolved_acad
+                        _save_config()
+                        st.success(f"✅ 경로 인식됨: `{_resolved_acad}`")
+                    else:
+                        _exe_guess = os.path.join(_acad_manual.strip().strip('"'), "acad.exe")
+                        st.error(
+                            f"❌ acad.exe를 찾을 수 없습니다.\n\n"
+                            f"확인 경로: `{_exe_guess}`\n\n"
+                            f"💡 파일 탐색기에서 **acad.exe** 파일을 찾아서\n"
+                            f"그 파일까지의 전체 경로를 붙여넣으세요."
+                        )
+
+            # 4) 자동 후처리 옵션 (SCR 스크립트 옵션)
+            st.markdown("**⚙️ AutoCAD 자동 정리 옵션 (SCR)**")
+            st.session_state.setdefault("v65_use_overkill",    True)
+            st.session_state.setdefault("v65_use_pedit_join",  True)
+            st.session_state.setdefault("v65_use_zoom_extents",True)
+            st.session_state.setdefault("v65_use_purge",       False)
+            st.session_state.setdefault("v65_auto_save",       True)
+
+            st.toggle("🔁 OVERKILL (중복선 자동 제거)",   key="v65_use_overkill",
+                      help="겹치거나 중복된 선을 AutoCAD가 자동으로 정리합니다. ⚠️ AutoCAD 풀버전 전용 (LT는 미지원).")
+            st.toggle("🔗 PEDIT JOIN (분리선 자동 결합)", key="v65_use_pedit_join",
+                      help="끊어진 라인/폴리라인을 자동으로 하나의 polyline으로 결합합니다.")
+            st.toggle("🔍 ZOOM EXTENTS (도면 전체보기)",  key="v65_use_zoom_extents",
+                      help="파일을 연 직후 도면 전체가 보이도록 자동 확대.")
+            st.toggle("🗑️ PURGE (사용 안하는 객체 제거)", key="v65_use_purge",
+                      help="블록·레이어·라인타입 등 미사용 객체를 자동 정리.")
+            st.toggle("💾 자동 저장 (QSAVE)",              key="v65_auto_save",
+                      help="자동 정리 완료 후 파일을 자동으로 저장합니다.")
+
+            # 🆕 v6.8: 경로 설정 영구 저장 버튼
+            st.markdown("---")
+            st.markdown(
+                "<div style='font-size:0.72rem;color:#5a7a96;margin-bottom:6px;'>"
+                "💾 경로 설정을 저장하면 앱을 껐다 켜도 자동으로 불러옵니다."
+                "</div>",
+                unsafe_allow_html=True
+            )
+            if st.button("💾 ODA·AutoCAD 경로 설정 저장",
+                         use_container_width=True, type="primary",
+                         key="v68_save_config_btn",
+                         help="ODA 경로, AutoCAD 경로, DWG 버전, SCR 옵션을 config.json에 저장합니다."):
+                if _save_config():
+                    st.success(
+                        f"✅ 설정이 저장되었습니다!\n\n"
+                        f"📁 `{os.path.basename(_CONFIG_PATH)}`\n\n"
+                        f"이제 앱을 껐다 켜도 경로 설정이 자동으로 유지됩니다."
+                    )
+                else:
+                    st.error(f"❌ 저장 실패. 경로 확인: `{_CONFIG_PATH}`")
 
     # ══════════════════════════════════════
     # 🌟 v4.2: 설정저장/불러오기 (사이드바 최상단)
@@ -4029,6 +4865,66 @@ with st.sidebar:
         elif image_type == "일반 이미지(풍성한 표현,두줄)":
             _apply_preset_callback(image_type, "세밀 🔬", PRESETS["일반 이미지(풍성한 표현,두줄)"]["세밀 🔬"])
 
+    # ══════════════════════════════════════════════════════════
+    # 🆕 v6.4 [UI 개선 ⑥]: 퀵 변환 3단계 버튼 (빠름 / 균형 / 정밀)
+    # ══════════════════════════════════════════════════════════
+    st.markdown("<div class='sb-section-label' style='margin-top:8px;'>⚡ 퀵 변환 (v6.4)</div>", unsafe_allow_html=True)
+    _q_cols = st.columns(3, gap="small")
+    _active_quick = st.session_state.get("v64_active_quick", None)
+
+    def _apply_quick_v64(mode):
+        """⚡ 빠름 / ⚖️ 균형 / 🔬 정밀 — 자주 쓰는 슬라이더 조합을 한 번에 적용.
+        기존 슬라이더 값을 session_state로 직접 덮어쓰므로 어떤 도면 종류에서도 동작."""
+        if mode == "fast":
+            _vals = {
+                "sl_eps":      2.0,   # 곡선 단순화 강하게 → 노드 적게, 처리 빠름
+                "sl_smooth":   5,     # 스무딩 약하게
+                "sl_epsilon":  2.0,
+                "sl_threshold":127,
+                "sl_straight": 8.0,
+                "sl_spline":   80,
+                "sl_sharpen":  0.8,
+            }
+        elif mode == "precise":
+            _vals = {
+                "sl_eps":      0.5,   # 곡선 단순화 약하게 → 원본에 가까운 정밀선
+                "sl_smooth":   11,    # 스무딩 강하게 → 매끄러운 곡선
+                "sl_epsilon":  0.5,
+                "sl_threshold":127,
+                "sl_straight": 3.0,
+                "sl_spline":   150,
+                "sl_sharpen":  1.3,
+            }
+        else:  # balanced
+            _vals = {
+                "sl_eps":      1.2,
+                "sl_smooth":   7,
+                "sl_epsilon":  1.2,
+                "sl_threshold":127,
+                "sl_straight": 5.0,
+                "sl_spline":   120,
+                "sl_sharpen":  1.0,
+            }
+        for k, v in _vals.items():
+            st.session_state[k] = v
+        st.session_state["v64_active_quick"] = mode
+
+    with _q_cols[0]:
+        _btn_t = "primary" if _active_quick == "fast" else "secondary"
+        st.button("⚡ 빠름", key="v64_quick_fast", use_container_width=True, type=_btn_t,
+                  help="처리 속도 우선 (단순화 강함, 스무딩 약함). 빠른 검토용 변환에 적합.",
+                  on_click=_apply_quick_v64, args=("fast",))
+    with _q_cols[1]:
+        _btn_b = "primary" if _active_quick == "balanced" else "secondary"
+        st.button("⚖️ 균형", key="v64_quick_balanced", use_container_width=True, type=_btn_b,
+                  help="속도와 품질의 균형 (실무 기본 권장값).",
+                  on_click=_apply_quick_v64, args=("balanced",))
+    with _q_cols[2]:
+        _btn_p = "primary" if _active_quick == "precise" else "secondary"
+        st.button("🔬 정밀", key="v64_quick_precise", use_container_width=True, type=_btn_p,
+                  help="원본에 최대한 가깝게 변환 (단순화 약함, 스무딩 강함, 노드 多). 처리 시간 ↑",
+                  on_click=_apply_quick_v64, args=("precise",))
+
     layer_name = "1"
     USER_SCALE = 0.1
 
@@ -4093,7 +4989,8 @@ with st.sidebar:
     SR_THRESHOLD_PX      = 1500
 
     # ── 고급 옵션 ──
-    with st.expander("🔧 고급 옵션", expanded=True):
+    # 🆕 v6.4 [UI 개선 ⑧]: 고급 옵션 기본 접힘 (사이드바 가독성 향상)
+    with st.expander("🔧 고급 옵션", expanded=False):
         use_ocr = st.toggle("🔤 문자 인식 (OCR)", key="opt_use_ocr", help="도면 안의 한글/영문/숫자를 자동으로 인식해 DXF 텍스트 객체로 변환합니다. 처리 시간이 다소 늘어날 수 있습니다.")
 
         # 🆕 v6.3: AI Super-Resolution 토글 (상태 표시 포함)
@@ -4420,6 +5317,72 @@ with st.sidebar:
             THRESHOLD_VAL = st.slider("인식 민감도", 0, 255, step=1, key="sl_threshold")
             EPSILON       = st.slider("윤곽선 세밀도", 0.1, 5.0, step=0.1, key="sl_epsilon")
 
+        # ════════════════════════════════════════════════════════════
+        # 🆕 v6.4 [UI 개선 ⑦]: 슬라이더 숫자 직접 입력 (정밀 조정용)
+        # ════════════════════════════════════════════════════════════
+        with st.expander("✏️ 슬라이더 값 직접 입력 (v6.4 ★)", expanded=False):
+            st.markdown(
+                "<div style='font-size:0.72rem;color:#5a7a96;margin-bottom:6px;line-height:1.4;'>"
+                "키보드로 정확한 수치를 입력하고 <b>'📥 적용'</b> 버튼을 누르면 위 슬라이더에 반영됩니다."
+                "</div>",
+                unsafe_allow_html=True
+            )
+            _num_specs = []  # (label, key, type, min, max, step, default)
+            if image_type in ("기계도면 - 사시도", "깔끔한 디지털 선화"):
+                _num_specs = [
+                    ("곡선 세밀도 (epsilon)", "sl_eps",    "float", 0.1, 3.0, 0.1, 1.2),
+                    ("스무딩 강도",           "sl_smooth", "int",   3,   25,  2,   7),
+                ]
+            elif image_type == "기계도면 - 정면도/단면도":
+                _num_specs = [
+                    ("직선 단순화 (epsilon)", "sl_eps",    "float", 0.1, 5.0, 0.1, 1.2),
+                    ("스무딩 강도",           "sl_smooth", "int",   3,   25,  2,   7),
+                ]
+            elif image_type == "일반 이미지(간략한 표현,한줄)":
+                _num_specs = [
+                    ("인식 민감도",   "sl_threshold","int",   0,   255, 1,   127),
+                    ("직선 공차",     "sl_straight", "float", 1.0, 15.0,0.1, 5.0),
+                    ("곡선 세밀도",   "sl_eps",      "float", 0.1, 5.0, 0.1, 1.2),
+                    ("스플라인 밀도", "sl_spline",   "int",   40,  200, 10,  120),
+                    ("스무딩 강도",   "sl_smooth",   "int",   3,   25,  2,   7),
+                ]
+            elif image_type == "일반 이미지(풍성한 표현,두줄)":
+                _num_specs = [
+                    ("인식 민감도",   "sl_threshold","int",   0,   255, 1,   127),
+                    ("윤곽선 세밀도", "sl_epsilon",  "float", 0.1, 5.0, 0.1, 1.2),
+                ]
+
+            _ni_values = {}
+            for _lbl, _key, _typ, _mn, _mx, _stp, _df in _num_specs:
+                _curr = st.session_state.get(_key, _df)
+                if _typ == "int":
+                    _ni_values[_key] = st.number_input(
+                        _lbl, min_value=int(_mn), max_value=int(_mx),
+                        value=int(_curr), step=int(_stp),
+                        key=f"v64_ni_{_key}",
+                    )
+                else:
+                    _ni_values[_key] = st.number_input(
+                        _lbl, min_value=float(_mn), max_value=float(_mx),
+                        value=float(_curr), step=float(_stp),
+                        key=f"v64_ni_{_key}", format="%.2f",
+                    )
+
+            if st.button("📥 입력값을 슬라이더에 적용",
+                         use_container_width=True, type="primary",
+                         key="v64_apply_num_inputs",
+                         help="입력 박스의 값을 위 슬라이더에 일괄 반영합니다."):
+                _applied = 0
+                for _key, _v in _ni_values.items():
+                    if st.session_state.get(_key) != _v:
+                        st.session_state[_key] = _v
+                        _applied += 1
+                if _applied > 0:
+                    st.success(f"✅ {_applied}개 슬라이더에 적용되었습니다.")
+                    st.rerun()
+                else:
+                    st.info("변경된 값이 없습니다.")
+
     SIMPLIFY_EPS   = st.session_state.get("sl_eps", SIMPLIFY_EPS)
     SMOOTH_WINDOW  = st.session_state.get("sl_smooth", SMOOTH_WINDOW)
     THRESHOLD_VAL  = st.session_state.get("sl_threshold", THRESHOLD_VAL)
@@ -4575,9 +5538,9 @@ if not st.session_state.get("conversion_done", False):
 <div class="hero-banner">
     <div class="hero-bg-img"></div>
     <div class="hero-left">
-        <div class="hero-badge">v6.2 · User Presets · AI Recommendation · Single-File Reconvert</div>
-        <div class="hero-title">📐 이미지 일괄 DXF 변환 시스템</div>
-        <div class="hero-subtitle">⭐ 사용자 정의 프리셋 + 🤖 AI 추천 강화 + 🎚️ 투명도 + 🔁 단일 재변환</div>
+        <div class="hero-badge">v6.9 · 🏗️ DWG 바로 저장 · 깔끔한 파일명 · UI 단순화</div>
+        <div class="hero-title">📐 이미지 일괄 DWG/DXF 변환 시스템</div>
+        <div class="hero-subtitle">🏗️ DWG 바로 저장 · 📐🏗️ 안전망 모드 · 🅰️ AutoCAD 자동 후처리 · ⚡ 퀵 변환 3단계</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -4679,24 +5642,34 @@ if not st.session_state.get("conversion_done", False):
                     ):
                         st.session_state["v62_show_ai_recs"] = not st.session_state.get("v62_show_ai_recs", False)
                 with _btn_cols[2]:
-                    if st.button(
+                    # 🔧 v6.7 fix: on_click 콜백으로 변경
+                    # 기존: if st.button() 블록 안에서 session_state 직접 수정
+                    #   → 슬라이더가 이미 렌더링된 후라 StreamlitAPIException 발생
+                    # 수정: on_click 콜백은 슬라이더 렌더링 전에 실행되므로 충돌 없음
+                    def _apply_ai_recs_callback(
+                        _toggle_dict=_qa.get("auto_options", {}),
+                        _slider_dict=_slider_rec.get("slider_values", {}),
+                    ):
+                        """추천 토글 + 슬라이더 값을 session_state에 일괄 적용 (on_click 콜백)."""
+                        for k, v in _toggle_dict.items():
+                            st.session_state[k] = v
+                        for k, v in _slider_dict.items():
+                            st.session_state[k] = v
+                        _total = len(_toggle_dict) + len(_slider_dict)
+                        st.session_state["v67_ai_apply_count"] = _total
+
+                    st.button(
                         "🎯 추천 일괄 적용",
                         use_container_width=True,
                         key="apply_recs_btn",
                         type="primary",
                         help="ON/OFF 추천 + AI 슬라이더 수치 추천을 모두 자동 적용합니다 (사이드바 값 변경)",
-                    ):
-                        _applied = 0
-                        # 1) 토글 옵션 적용
-                        for k, v in _qa.get("auto_options", {}).items():
-                            st.session_state[k] = v
-                            _applied += 1
-                        # 2) 슬라이더 수치 적용
-                        for k, v in _slider_rec.get("slider_values", {}).items():
-                            st.session_state[k] = v
-                            _applied += 1
-                        st.success(f"✅ 총 {_applied}개 추천 설정을 자동 적용했습니다.")
-                        st.rerun()
+                        on_click=_apply_ai_recs_callback,
+                    )
+                    # 적용 완료 메시지 표시
+                    _applied_count = st.session_state.pop("v67_ai_apply_count", None)
+                    if _applied_count is not None:
+                        st.success(f"✅ 총 {_applied_count}개 추천 설정을 자동 적용했습니다.")
 
                 # AI 슬라이더 수치 추천 펼침 카드
                 if _has_slider_recs and st.session_state.get("v62_show_ai_recs", False):
@@ -4771,16 +5744,130 @@ if not st.session_state.get("conversion_done", False):
       </span>
       <span style="color:#9ab5d0; font-size:0.75rem; align-self:center; font-family:'JetBrains Mono', monospace;">→</span>
       <span style="background:#0078d4; border:1px solid #0078d4; border-radius:4px; padding:3px 10px; font-size:0.74rem; font-weight:600; color:#ffffff;">
-        ④ 📐 DXF 파일로 변환
+        ④ 🏗️ DWG 파일로 변환
       </span>
     </div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
+        # ════════════════════════════════════════════════════════════════════
+        # 🆕 v6.7 [핵심]: 메인 화면 출력 형식 선택 + ODA 상태 + 변환 버튼
+        # ════════════════════════════════════════════════════════════════════
+        # 사이드바 안 열어도 보이도록 변환 버튼 바로 위에 배치
+        # 기본값: DWG만 저장 (사용자 요청 — DXF 파일 필요 없음)
+        # ════════════════════════════════════════════════════════════════════
+
+        # 현재 ODA 사용 가능 여부 체크
+        _v67_oda_path  = st.session_state.get("v65_oda_path", "")
+        _v67_oda_ready = bool(_v67_oda_path) and os.path.isfile(_v67_oda_path) and _IS_WINDOWS
+
+        # 출력 형식 선택 UI
+        st.markdown(
+            "<div style='font-size:0.78rem; font-weight:700; color:#1a3a5c; "
+            "letter-spacing:0.05em; margin-top:8px; margin-bottom:6px;'>"
+            "📤 출력 형식 선택"
+            "</div>",
+            unsafe_allow_html=True
+        )
+
+        _fmt_cols = st.columns([3, 1], gap="medium")
+        with _fmt_cols[0]:
+            # 현재 세션값 → 라디오 인덱스로 변환
+            _cur_fmt = st.session_state.get("v66_output_format", "dwg_only")
+            # DXF만 옵션은 메인에서 노출 안 함. 만약 이전 세션에 dxf_only가 남아 있어도 dwg_only로 강제.
+            if _cur_fmt == "dxf_only":
+                _cur_fmt = "dwg_only"
+                st.session_state["v66_output_format"] = "dwg_only"
+
+            _fmt_options = [
+                "🏗️ DWG만 저장 (기본, 권장)",
+                "📐🏗️ DXF + DWG 둘 다 저장 (안전망)",
+            ]
+            _fmt_index = 0 if _cur_fmt == "dwg_only" else 1
+
+            _selected_fmt_label = st.radio(
+                "출력 형식 선택",
+                options=_fmt_options,
+                index=_fmt_index,
+                key="v67_main_fmt_radio",
+                horizontal=True,
+                label_visibility="collapsed",
+                help=(
+                    "🏗️ DWG만: AutoCAD에서 바로 열기 좋음 (대부분 이 옵션 추천)\n"
+                    "📐🏗️ 둘 다: 호환성 안전망 — DWG 변환 실패 대비용 DXF 백업도 함께 저장"
+                ),
+            )
+            # 라벨 → 코드로 변환 후 세션에 저장
+            st.session_state["v66_output_format"] = (
+                "dwg_only" if _selected_fmt_label.startswith("🏗️ DWG만") else "both"
+            )
+
+        with _fmt_cols[1]:
+            # ODA 설치 상태 표시 배지
+            if _v67_oda_ready:
+                _ver_code = st.session_state.get("v65_dwg_version_code", "ACAD2018")
+                st.markdown(
+                    f"<div style='background:#e8f5e9;border:1px solid #4caf50;"
+                    f"border-radius:6px;padding:6px 10px;font-size:0.74rem;"
+                    f"color:#1b5e20;text-align:center;font-weight:600;'>"
+                    f"✅ ODA 준비됨<br>"
+                    f"<span style='font-size:0.66rem;font-weight:400;'>{_ver_code}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+            elif not _IS_WINDOWS:
+                st.markdown(
+                    "<div style='background:#fff3e0;border:1px solid #ff9800;"
+                    "border-radius:6px;padding:6px 10px;font-size:0.74rem;"
+                    "color:#e65100;text-align:center;font-weight:600;'>"
+                    "🌐 웹 배포본<br>"
+                    "<span style='font-size:0.66rem;font-weight:400;'>DXF로만 저장됨</span>"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    "<div style='background:#ffebee;border:1px solid #f44336;"
+                    "border-radius:6px;padding:6px 10px;font-size:0.74rem;"
+                    "color:#b71c1c;text-align:center;font-weight:600;'>"
+                    "❌ ODA 미설치<br>"
+                    "<span style='font-size:0.66rem;font-weight:400;'>DXF로 대체됨</span>"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+
+        # ODA 미설치 안내 (DWG 선택 + ODA 없음)
+        if not _v67_oda_ready:
+            _fmt_now_check = st.session_state.get("v66_output_format", "dwg_only")
+            if _fmt_now_check in ("dwg_only", "both"):
+                with st.expander("ℹ️ ODA File Converter 설치 안내 (DWG 변환 필수)", expanded=False):
+                    st.markdown(
+                        """
+                        **DWG 변환에는 무료 도구 'ODA File Converter'가 필요합니다.**
+
+                        - 다운로드: https://www.opendesign.com/guestfiles/oda_file_converter
+                        - 무료 (이메일 가입만 필요)
+                        - 설치 시 경로 그대로 두면 (`C:\\Program Files\\ODA\\...`) **자동으로 인식**됩니다.
+                        - 설치 후 이 페이지를 새로고침하면 ODA 자동 발견됨.
+
+                        💡 **지금은 ODA가 없어도 됩니다** — DWG 변환이 실패해도 자동으로 DXF로 대체 저장됩니다.
+
+                        📍 ODA 경로를 직접 지정하려면: 사이드바 **'🔧 DWG / AutoCAD 자동 연동'** 펼치기
+                        """
+                    )
+
+        # 🆕 v6.6: 변환 버튼 라벨을 출력 형식에 맞게 동적 변경
+        _v66_fmt_btn = st.session_state.get("v66_output_format", "dwg_only")
+        _v66_btn_label = {
+            "dxf_only": "📐  DXF 파일로 변환",
+            "dwg_only": "🏗️  DWG 파일로 변환",
+            "both":     "📐🏗️  DXF + DWG 둘 다 변환",
+        }.get(_v66_fmt_btn, "🏗️  DWG 파일로 변환")
+
         bcol1, bcol2 = st.columns([3, 1], gap="small")
         with bcol1:
-            run_clicked = st.button("📐  DXF 파일로 변환", use_container_width=True, type="primary", key="run_btn")
+            run_clicked = st.button(_v66_btn_label, use_container_width=True, type="primary", key="run_btn")
         with bcol2:
             cancel_clicked = st.button("✕ 취소", use_container_width=True, key="cancel_btn")
 
@@ -4813,7 +5900,13 @@ if not st.session_state.get("conversion_done", False):
                 for i, f in enumerate(files):
                     file_states[i] = "active"
                     dot_placeholder.markdown(render_dots(file_states), unsafe_allow_html=True)
-                    prog.progress(i / len(files), text=f"⚙️ 변환 중 ({i+1}/{len(files)}) · {f.name}")
+                    # 🆕 v6.6: 진행률 텍스트에 출력 형식 표시
+                    _fmt_label_dot = {
+                        "dxf_only": "DXF",
+                        "dwg_only": "DWG",
+                        "both":     "DXF+DWG",
+                    }.get(st.session_state.get("v66_output_format", "dwg_only"), "DWG")
+                    prog.progress(i / len(files), text=f"⚙️ 변환 중 [{_fmt_label_dot}] ({i+1}/{len(files)}) · {f.name}")
 
                     try:
                         img_bytes = f.getvalue()
@@ -4853,17 +5946,89 @@ if not st.session_state.get("conversion_done", False):
 
                         d_bytes, rpt = convert_to_dxf_bytes(img_bytes, **_conv_kwargs)
                         base = os.path.splitext(f.name)[0]
+                        # 🆕 v6.9: 파일명 규칙 단순화
+                        #   기존: 원본이름_dxf변환.dxf, 원본이름_dxf변환 (2).dxf
+                        #   변경: 원본이름.dxf, 원본이름 (2).dxf — 깔끔하고 직관적
                         if base not in name_counter:
-                            name_counter[base] = 0; d_name = f"{base}_dxf변환.dxf"
+                            name_counter[base] = 0
+                            _suffix = ""
                         else:
-                            name_counter[base] += 1; d_name = f"{base}_dxf변환 ({name_counter[base]}).dxf"
-                        zf.writestr(d_name, d_bytes)
-                        res.append({
-                            "filename": d_name, "original_name": f.name,
-                            "content": d_bytes, "image": img_bytes, "report": rpt,
-                            # 🔁 v6.2: 재변환을 위한 인자 보관
-                            "conv_kwargs": _conv_kwargs,
-                        })
+                            name_counter[base] += 1
+                            _suffix = f" ({name_counter[base] + 1})"  # (2), (3), ...
+                        d_name = f"{base}{_suffix}.dxf"
+
+                        # ════════════════════════════════════════════════════════════
+                        # 🆕 v6.6 [핵심]: 출력 형식에 따라 DXF/DWG 자동 분기
+                        # ════════════════════════════════════════════════════════════
+                        _out_fmt = st.session_state.get("v66_output_format", "dwg_only")
+                        _oda_path_now  = st.session_state.get("v65_oda_path", "")
+                        _dwg_ver_now   = st.session_state.get("v65_dwg_version_code", "ACAD2018")
+                        _oda_available = bool(_oda_path_now) and os.path.isfile(_oda_path_now)
+
+                        # 🛡️ Windows가 아니거나 ODA 없으면 DXF로 강제 (안전 fallback)
+                        if _out_fmt in ("dwg_only", "both") and (not _IS_WINDOWS or not _oda_available):
+                            _out_fmt_actual = "dxf_only"
+                            rpt.setdefault("warnings", []).append(
+                                "⚠️ DWG 출력 요청됐으나 ODA Converter를 사용할 수 없어 DXF로만 저장됨"
+                            )
+                        else:
+                            _out_fmt_actual = _out_fmt
+
+                        # DWG 변환 시도 (필요한 경우만)
+                        _dwg_bytes = None
+                        _dwg_name  = ""
+                        if _out_fmt_actual in ("dwg_only", "both"):
+                            # 🆕 v6.9: DWG 파일명도 원본이름.dwg 형태로 단순화
+                            _dwg_name = f"{base}{_suffix}.dwg"
+                            _dwg_bytes, _dwg_msg = convert_dxf_to_dwg_via_oda(
+                                dxf_bytes=d_bytes,
+                                dwg_filename_stem=f"{base}{_suffix}",
+                                oda_exe_path=_oda_path_now,
+                                target_version=_dwg_ver_now,
+                                timeout_sec=90,
+                            )
+                            if _dwg_bytes is None:
+                                # DWG 변환 실패 → 경고 누적 + DXF로 fallback
+                                rpt.setdefault("warnings", []).append(
+                                    f"⚠️ DWG 변환 실패: {_dwg_msg[:120]} (DXF로 대신 저장)"
+                                )
+                                _out_fmt_actual = "dxf_only"
+                                _dwg_bytes = None
+
+                        # ZIP에 추가 + results 등록 (출력 형식에 맞춰)
+                        if _out_fmt_actual == "dxf_only":
+                            # DXF만
+                            zf.writestr(d_name, d_bytes)
+                            res.append({
+                                "filename": d_name, "original_name": f.name,
+                                "content": d_bytes, "image": img_bytes, "report": rpt,
+                                "conv_kwargs": _conv_kwargs,
+                                "format": "dxf",
+                            })
+                        elif _out_fmt_actual == "dwg_only":
+                            # DWG만 (DXF는 ZIP에 안 넣음)
+                            zf.writestr(_dwg_name, _dwg_bytes)
+                            res.append({
+                                "filename": _dwg_name, "original_name": f.name,
+                                # content는 미리보기/재변환 호환성을 위해 DXF를 그대로 유지
+                                "content": d_bytes,             # 미리보기/재변환용 DXF 원본
+                                "dwg_content": _dwg_bytes,      # 실제 다운로드용 DWG
+                                "image": img_bytes, "report": rpt,
+                                "conv_kwargs": _conv_kwargs,
+                                "format": "dwg",
+                            })
+                        else:  # "both" — DXF + DWG 둘 다
+                            zf.writestr(d_name, d_bytes)
+                            zf.writestr(_dwg_name, _dwg_bytes)
+                            res.append({
+                                "filename": d_name, "original_name": f.name,
+                                "content": d_bytes, "image": img_bytes, "report": rpt,
+                                "conv_kwargs": _conv_kwargs,
+                                "dwg_filename": _dwg_name,
+                                "dwg_content":  _dwg_bytes,
+                                "format": "both",
+                            })
+
                         _success_count += 1
                         file_states[i] = "done"
                     except Exception as e:
@@ -5585,33 +6750,203 @@ if st.session_state.get("conversion_done", False):
             st.session_state["v62_do_reconvert"] = False
 
         # 다운로드 섹션
-        st.markdown("<div style='font-size:0.78rem; font-weight:700; color:#6e6e73; letter-spacing:0.08em; margin-bottom:8px; margin-top:6px;'>💾 개별 파일 다운로드</div>", unsafe_allow_html=True)
+        # 🆕 v6.7: 실제 저장된 형식 기반으로 표시 (ODA 폴백 여부 반영)
+        _fmt_now = st.session_state.get("v66_output_format", "dwg_only")
+        # 실제 결과에서 format 필드를 보고 진짜 저장 형식 파악
+        _actual_fmts = [r.get("format", "dxf") for r in results]
+        _has_dwg = any(f in ("dwg", "both") for f in _actual_fmts)
+        _all_fallback = all(f == "dxf" for f in _actual_fmts) and _fmt_now in ("dwg_only", "both")
+
+        if _all_fallback:
+            # DWG 요청했는데 전부 DXF로 폴백된 경우 — 명확히 안내
+            st.warning(
+                "⚠️ DWG 변환을 요청했지만 **ODA File Converter가 설정되지 않아 DXF로 저장**되었습니다.\n\n"
+                "사이드바 **'🔧 DWG / AutoCAD 자동 연동'** 에서 ODA 경로를 지정하면 다음 변환부터 DWG로 저장됩니다."
+            )
+            _fmt_label_show = "⚠️ DXF (DWG 폴백)"
+        elif _has_dwg:
+            _fmt_label_show = "🏗️ DWG"
+        else:
+            _fmt_label_show = "📄 DXF"
+
+        st.markdown(
+            f"<div style='font-size:0.78rem; font-weight:700; color:#6e6e73; letter-spacing:0.08em; margin-bottom:8px; margin-top:6px;'>"
+            f"💾 개별 파일 다운로드 <span style='color:#0078d4;font-size:0.74rem;margin-left:8px;'>저장 형식: {_fmt_label_show}</span></div>",
+            unsafe_allow_html=True
+        )
         _dl_cols = st.columns(min(len(results), 4), gap="small")
         for idx, r in enumerate(results):
             with _dl_cols[idx % min(len(results), 4)]:
-                st.download_button(
-                    label=f"📄 {r['filename']}",
-                    data=r["content"],
-                    file_name=r["filename"],
-                    mime="application/dxf",
-                    key=f"b_{idx}",
-                    use_container_width=True
-                )
+                _r_fmt = r.get("format", "dxf")
+                if _r_fmt == "dwg":
+                    st.download_button(
+                        label=f"🏗️ {r['filename']}",
+                        data=r.get("dwg_content", r["content"]),
+                        file_name=r["filename"],
+                        mime="application/octet-stream",
+                        key=f"b_{idx}",
+                        use_container_width=True
+                    )
+                elif _r_fmt == "both":
+                    st.download_button(
+                        label=f"📄 {r['filename']}",
+                        data=r["content"],
+                        file_name=r["filename"],
+                        mime="application/dxf",
+                        key=f"b_{idx}_dxf",
+                        use_container_width=True
+                    )
+                    st.download_button(
+                        label=f"🏗️ {r.get('dwg_filename', r['filename'].replace('.dxf','.dwg'))}",
+                        data=r.get("dwg_content", b""),
+                        file_name=r.get('dwg_filename', r['filename'].replace('.dxf','.dwg')),
+                        mime="application/octet-stream",
+                        key=f"b_{idx}_dwg",
+                        use_container_width=True
+                    )
+                else:
+                    # DXF (폴백 포함)
+                    st.download_button(
+                        label=f"📄 {r['filename']}",
+                        data=r["content"],
+                        file_name=r["filename"],
+                        mime="application/dxf",
+                        key=f"b_{idx}",
+                        use_container_width=True
+                    )
 
         # 🌟 v4.0: ZIP 일괄 다운로드 (성공한 것만 + 라벨 명확화)
         st.markdown("<div class='zip-btn' style='margin-top:6px; margin-bottom:10px'>", unsafe_allow_html=True)
-        _zip_label = f"📦 성공한 {len(results)}개 ZIP 일괄 다운로드"
+        # 🆕 v6.6: 출력 형식에 따라 ZIP 라벨/파일명 변경
+        _zip_fmt_label = {
+            "dxf_only": ("DXF",     "DXF_변환완료.zip"),
+            "dwg_only": ("DWG",     "DWG_변환완료.zip"),
+            "both":     ("DXF+DWG", "DXF_DWG_변환완료.zip"),
+        }.get(_fmt_now, ("DXF", "DXF_변환완료.zip"))
+        _zip_kind, _zip_filename = _zip_fmt_label
+        _zip_label = f"📦 성공한 {len(results)}개 ZIP 일괄 다운로드 ({_zip_kind})"
         if failed_files:
             _zip_label += f" (실패 {len(failed_files)}건 제외)"
         st.download_button(
             label=_zip_label,
             data=st.session_state.zip_data,
-            file_name="DXF_변환완료.zip",
+            file_name=_zip_filename,
             mime="application/zip",
             use_container_width=True,
             key="zip_dl"
         )
         st.markdown("</div>", unsafe_allow_html=True)
+
+        # ════════════════════════════════════════════════════════════════
+        # 🆕 v6.9: AutoCAD 자동 후처리 섹션
+        #   - DXF→DWG 일괄 변환 버튼 제거 (변환 시점에 이미 DWG로 저장되므로 불필요)
+        #   - AutoCAD 자동 정리만 유지
+        # ════════════════════════════════════════════════════════════════
+        if _IS_WINDOWS:
+            st.markdown(
+                "<div style='font-size:0.78rem; font-weight:700; color:#6e6e73; "
+                "letter-spacing:0.08em; margin-top:18px; margin-bottom:8px;'>"
+                "🅰️ AutoCAD 자동 정리 "
+                "<span style='font-weight:500;color:#9aa3b2;'>"
+                "(파일을 AutoCAD로 열어 중복선 제거·폴리라인 결합·자동 저장)"
+                "</span></div>",
+                unsafe_allow_html=True
+            )
+
+            _acad_path = st.session_state.get("v65_acad_path", "")
+            _acad_ready = bool(_acad_path) and os.path.isfile(_acad_path)
+
+            if not _acad_ready:
+                st.warning(
+                    "⚠️ AutoCAD 실행파일 경로가 설정되지 않았습니다.\n\n"
+                    "사이드바 **'🔧 DWG/AutoCAD 자동 연동'** 에서 경로를 지정하세요.",
+                    icon="⚠️"
+                )
+                _acad_btn_cols = st.columns(2, gap="medium")
+                with _acad_btn_cols[0]:
+                    st.button("🅰️ AutoCAD에서 첫 파일 열기", disabled=True, use_container_width=True,
+                              key="v65_btn_acad_disabled")
+                with _acad_btn_cols[1]:
+                    st.button("🅰️ 모든 파일 AutoCAD 자동 정리", disabled=True, use_container_width=True,
+                              key="v65_btn_acad_batch_disabled")
+            else:
+                _acad_btn_cols = st.columns(2, gap="medium")
+                # 첫 번째 파일을 AutoCAD에서 자동 정리하며 열기
+                _first = results[0] if results else None
+                with _acad_btn_cols[0]:
+                    if st.button("🅰️ AutoCAD에서 첫 파일 자동 열기",
+                                 use_container_width=True, type="primary",
+                                 key="v65_btn_acad_open",
+                                 help="첫 번째 변환 결과를 AutoCAD에서 자동으로 열고, OVERKILL/PEDIT 등 자동 정리 SCR을 실행합니다."):
+                        if _first is None:
+                            st.error("변환 결과가 없습니다.")
+                        else:
+                            # 임시 파일로 저장 후 AutoCAD에 전달
+                            _tmp_dir = tempfile.gettempdir()
+                            _tmp_dxf = os.path.join(_tmp_dir, _first["filename"])
+                            try:
+                                with open(_tmp_dxf, "wb") as _tf:
+                                    _tf.write(_first["content"])
+                                _ok, _msg = open_in_autocad(
+                                    _tmp_dxf,
+                                    run_cleanup=True,
+                                    use_overkill=    st.session_state.get("v65_use_overkill",     True),
+                                    use_pedit_join=  st.session_state.get("v65_use_pedit_join",   True),
+                                    use_zoom_extents=st.session_state.get("v65_use_zoom_extents", True),
+                                    use_purge=       st.session_state.get("v65_use_purge",        False),
+                                    auto_save=       st.session_state.get("v65_auto_save",        True),
+                                    acad_exe_path=_acad_path,
+                                )
+                                if _ok:
+                                    st.success(_msg)
+                                    st.caption(f"📁 임시 경로: `{_tmp_dxf}`")
+                                else:
+                                    st.error(_msg)
+                            except Exception as _ex:
+                                st.error(f"❌ 파일 저장 또는 AutoCAD 실행 실패: {_ex}")
+
+                with _acad_btn_cols[1]:
+                    # 일괄 AutoCAD 실행 (정리만 자동, 열기는 한 번에 1개씩 권장)
+                    if st.button("🅰️ 모든 파일 AutoCAD 자동 정리",
+                                 use_container_width=True,
+                                 key="v65_btn_acad_batch",
+                                 help="모든 변환 결과를 AutoCAD에서 차례로 열어 자동 정리합니다. (큰 작업이므로 신중히 실행)"):
+                        with st.spinner(f"🔄 {len(results)}개 파일을 AutoCAD로 순차 실행..."):
+                            _batch_msgs = []
+                            for _r in results:
+                                _tmp_dir = tempfile.gettempdir()
+                                _tmp_dxf = os.path.join(_tmp_dir, _r["filename"])
+                                try:
+                                    with open(_tmp_dxf, "wb") as _tf:
+                                        _tf.write(_r["content"])
+                                    _ok, _msg = open_in_autocad(
+                                        _tmp_dxf,
+                                        run_cleanup=True,
+                                        use_overkill=    st.session_state.get("v65_use_overkill",     True),
+                                        use_pedit_join=  st.session_state.get("v65_use_pedit_join",   True),
+                                        use_zoom_extents=st.session_state.get("v65_use_zoom_extents", True),
+                                        use_purge=       st.session_state.get("v65_use_purge",        False),
+                                        auto_save=       st.session_state.get("v65_auto_save",        True),
+                                        acad_exe_path=_acad_path,
+                                    )
+                                    _batch_msgs.append(f"{'✅' if _ok else '❌'} {_r['filename']}")
+                                except Exception as _ex:
+                                    _batch_msgs.append(f"❌ {_r['filename']}: {_ex}")
+                            st.info("\n\n".join(_batch_msgs[:10]) +
+                                    (f"\n\n... 외 {len(_batch_msgs)-10}개" if len(_batch_msgs) > 10 else ""))
+
+            # 자동 후처리 옵션 안내 (활성화된 옵션 보여주기)
+            _enabled_opts = []
+            if st.session_state.get("v65_use_zoom_extents", True): _enabled_opts.append("🔍 ZOOM E")
+            if st.session_state.get("v65_use_overkill",     True): _enabled_opts.append("🔁 OVERKILL")
+            if st.session_state.get("v65_use_pedit_join",   True): _enabled_opts.append("🔗 PEDIT JOIN")
+            if st.session_state.get("v65_use_purge",        False): _enabled_opts.append("🗑️ PURGE")
+            if st.session_state.get("v65_auto_save",        True): _enabled_opts.append("💾 QSAVE")
+            if _enabled_opts:
+                st.caption(f"⚙️ AutoCAD 자동 정리 실행 항목: {' · '.join(_enabled_opts)}")
+        else:
+            # Windows 외 환경에서는 안내만 표시
+            st.caption("ℹ️ DWG 변환과 AutoCAD 자동 후처리는 Windows 환경에서만 사용 가능합니다.")
 
         # 🌟 v4.0: 파일별 변환 리포트 expander
         with st.expander(f"📊 파일별 변환 결과 리포트 ({len(results)}개)", expanded=False):
