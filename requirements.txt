@@ -15,9 +15,9 @@ Pillow>=10.0.0
 # CAD 변환
 ezdxf>=1.0.0
 
-# OCR (한글/영문)
-easyocr>=1.7.0
-
 # 시각화
 matplotlib>=3.7.0
 plotly>=5.17.0
+
+# OCR (선택) — 설치 실패 시 OCR 기능만 비활성화되고 나머지는 정상 동작
+# easyocr>=1.7.0
