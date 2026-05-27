@@ -665,7 +665,11 @@ import ezdxf
 import numpy as np
 import streamlit as st
 import streamlit.components.v1 as components
-import easyocr
+try:
+    import easyocr
+    _EASYOCR_AVAILABLE = True
+except ImportError:
+    _EASYOCR_AVAILABLE = False
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -1922,6 +1926,8 @@ _init_sliders()
 
 @st.cache_resource
 def load_ocr_model():
+    if not _EASYOCR_AVAILABLE:
+        return None
     return easyocr.Reader(['ko', 'en'], gpu=False)
 
 
@@ -4099,11 +4105,16 @@ def convert_to_dxf_bytes(
 
     text_data = []
     if use_ocr:
-        results = load_ocr_model().readtext(img_color, width_ths=0.7)
-        for (bbox, text, prob) in results:
-            # 🆕 v6.3: 신뢰도 임계값 0.3 → 0.5 상향 (노이즈 오인식 차단)
-            if prob > 0.5:
-                text_data.append((text, bbox[0], bbox[2], float(prob)))
+        _ocr_model = load_ocr_model()
+        if _ocr_model is None:
+            # easyocr 미설치 환경 (Streamlit Cloud 등) — OCR 조용히 건너뜀
+            report["warnings"].append("⚠️ OCR 기능 비활성화 (easyocr 미설치 환경)")
+        else:
+            results = _ocr_model.readtext(img_color, width_ths=0.7)
+            for (bbox, text, prob) in results:
+                # 🆕 v6.3: 신뢰도 임계값 0.3 → 0.5 상향 (노이즈 오인식 차단)
+                if prob > 0.5:
+                    text_data.append((text, bbox[0], bbox[2], float(prob)))
                 cv2.rectangle(img_color, (int(bbox[0][0]), int(bbox[0][1])), (int(bbox[2][0]), int(bbox[2][1])), (255, 255, 255), -1)
 
     doc = ezdxf.new(dxfversion="R2010")
