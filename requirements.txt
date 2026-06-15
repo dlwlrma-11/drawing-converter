@@ -1,11 +1,12 @@
-# 이미지 일괄 DXF 변환 시스템 v6.9 - 웹 배포본 (app.py) 의존성
+# 이미지 일괄 DXF 변환 시스템 v7.3 - 웹 배포본 (app.py) 의존성
 # GitHub + Streamlit Cloud 배포용
 # ─────────────────────────────────────────────────
 
-streamlit>=1.28.0
+streamlit>=1.31.0
 streamlit-drawable-canvas>=0.9.3
 
 # 컴퓨터 비전 / 이미지 처리
+# ※ contrib 필수 — v7.3 고속 스켈레톤(ximgproc.thinning) / FLD 직선 추출 사용
 opencv-contrib-python-headless>=4.8.0
 numpy>=1.24.0
 scikit-image>=0.21.0
@@ -13,7 +14,7 @@ scipy>=1.10.0
 Pillow>=10.0.0
 
 # CAD 변환
-ezdxf>=1.0.0
+ezdxf>=1.1.0
 
 # 시각화
 matplotlib>=3.7.0
