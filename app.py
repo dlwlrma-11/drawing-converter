@@ -1,10 +1,76 @@
 """
-이미지 일괄 DXF 변환 시스템 v6.9 (도면팀-이영세) — 웹 배포본 (app.py)
-========================================================================
+이미지 일괄 DXF 변환 시스템 v7.3 (도면팀-이영세) — 웹 배포본 (app.py)
+===============================================
 🌐 본 파일은 GitHub + Streamlit Cloud 등 웹 배포 전용 버전입니다.
    로컬 Windows 버전 (Auto_Web.py) 과 동일 코드이지만, Linux 환경에서는
-   ODA File Converter / AutoCAD 자동 연동이 자동으로 비활성화됩니다.
+   DWG 자동 변환·AutoCAD 후처리가 자동 비활성화되고 결과는 DXF로 제공됩니다.
    (Windows 가드: _IS_WINDOWS 체크가 모든 외부 도구 호출에 적용됨)
+   easyocr 미설치 환경에서는 OCR 기능만 자동 비활성화됩니다.
+
+[v7.3 변경사항] 🩺 버그 2건 수정 + 🚀 성능 옵션 + 🎓 UI 편의 ⚡
+
+  🩺 버그 수정 (기존 결과 품질 직접 개선)
+      ① OCR 텍스트 마스킹 무효화 수정
+          - 기존: 글자 영역을 컬러 이미지에만 흰색으로 덮고, 벡터화는 그 이전에
+            만들어진 회색 이미지를 사용 → 글자 획이 선으로도 변환되어 TEXT와 이중 겹침
+          - 수정: OCR 마스킹 직후 회색 이미지를 재생성 → 글자 자리는 TEXT 객체만 남음
+      ② ARC(호) 방향 오류 수정
+          - 기존: 무조건 작은각→큰각으로 호를 그려 절반 확률로 반대쪽 호가 생성됨
+          - 수정: path 중간점이 포함된 쪽 호를 자동 선택 (0°/360° 경계 케이스 포함)
+
+  🚀 성능 (모두 기본 OFF 또는 '결과 동일' 내부 최적화)
+      - 🚀 고속 스켈레톤 토글: cv2.ximgproc GUOHALL thinning (C++, 3~10배 빠름, 자동 폴백)
+      - 🚀 FLD(FastLineDetector) 직선 추출 토글: HoughLinesP 대체 엔진 (자동 폴백)
+      - 선 두께 정규화 ON일 때 skeleton 이중 계산 제거 (결과 동일, 시간 절약)
+      - 끊어진 선 잇기(stitch)를 KD-tree 후보 검색으로 가속 (결과 동일)
+
+  🧰 CAD 품질
+      - 해치 인식 결과: SOLID 사각형 → 진짜 HATCH 엔티티(ANSI31 패턴) (실패 시 SOLID 폴백)
+      - 닫힌 path는 approxPolyDP closed=True 단순화 + 폐합 플래그 강제 유지
+      - 저장 직전 ezdxf doc.audit() 자가수리 — '안 열리는 DXF' 사전 차단
+
+  🎓 UI/UX
+      - 변환 버튼 위 '활성 옵션' 요약 칩 + 버튼 행 화면 상단 고정(sticky)
+      - 결과 화면: 설정 변경 감지 안내 배지 / 품질 낮은 순 정렬 / QA 문제 파일 일괄 재변환
+
+[v7.0 변경사항] ⚡ 배치 병렬 변환 + 🔍 CAD QA 자동 검수 + 🎓 UI/UX 개선 ⚡
+
+  ⚡ 배치 병렬 변환 (속도 향상)
+      - DXF 계산 단계를 CPU 코어 수만큼 병렬 처리 → 다중 파일 2~4배 빠름
+      - OCR OFF → 병렬 / OCR ON → 순차 자동 전환
+      - DWG·ZIP·통계는 순차 유지 (ODA 충돌 방지)
+      - 병렬 실패 시 자동 순차 폴백
+
+  🔍 CAD QA 자동 검수 리포트 (추가 설치 없음 — ezdxf 활용)
+      - 변환 완료 즉시 5가지 품질 문제 자동 검사:
+          · 미폐합 폴리라인 (닫혀야 할 선이 열린 상태)
+          · 중복선 (동일 위치 선 2개 이상)
+          · 0길이 선 (크기 없는 잔여 엔티티)
+          · 레이어 오류 (잘못된 레이어 배치)
+          · 텍스트 누락 (OCR ON인데 텍스트 0개)
+      - QA 점수 0~100점 + 등급 자동 산출
+      - 결과 화면에 항목별 배지로 표시, 문제 파일 상세 expander 제공
+      - AutoCAD 열기 전에 문제 파일만 골라낼 수 있음
+
+  🎓 UI/UX 개선
+      - 예상 남은 시간(ETA) 진행률 표시
+      - 실패 파일 결과 화면 상단 빨간 배지로 즉시 표시
+      - 첫 사용 온보딩 가이드 (닫기 가능)
+
+  📌 버전 정리: 기존 v4~v6 분산 버전을 v7.0으로 통합
+  ★ NEW: 여러 파일을 동시에 변환 (ProcessPoolExecutor)
+      - DXF 계산 단계를 CPU 코어 수만큼 병렬 처리 → 다중 파일 변환 2~4배 빠름
+      - 워커 수 자동 설정: (CPU 코어 - 1), 최대 6개 (메모리 보호)
+  ★ 자동 모드 선택 (사용자 개입 불필요):
+      - OCR OFF → ⚡ 병렬 모드 (대부분의 도면, 빠름)
+      - OCR ON  → 🛡️ 순차 모드 (OCR 모델 중복 로드 방지, 기존과 동일)
+      - 파일 1개 / 코어 1개 → 자동 순차
+  ★ 안전 설계:
+      - DWG(ODA)·ZIP·통계는 메인에서 순차 처리 유지 (외부 exe 충돌 방지)
+      - 병렬 실행 실패 시 자동으로 순차 모드로 폴백 (앱 멈춤 없음)
+      - 파일별 실패 격리·결과 순서 보존·외곽선 후처리 모두 기존과 동일
+      - 진행률 표시: 변환(0~80%) → 저장/DWG(80~100%) 2단계로 세분화
+  ★ 기존 기능·UI·변환 품질·결과 화면은 100% 그대로 유지
 
 [v6.9 변경사항] ★ 파일명 단순화 + DXF→DWG 일괄변환 버튼 제거 ★
   ★ CHANGE: 파일명 규칙 단순화
@@ -243,6 +309,30 @@ _SIDE_IMG_B64, _SIDE_LOADED = _load_image_b64(["sidebar_bg.png", "사이드배�
 # ══════════════════════════════════════════════════════════════════════════════
 
 _IS_WINDOWS = platform.system().lower().startswith("win")
+
+# 🆕 v7.0: 로컬 실행 환경 감지
+#   Streamlit Cloud(Linux 서버)가 아니라 사용자 PC에서 직접 돌리는 경우를 판별.
+#   로컬에서는 브라우저 '도장(dev_id)' 새로고침 단계를 건너뛰고 고정 ID를 써서
+#   이름 입력·방문 기록·이력이 즉시 정상 작동하게 한다.
+#   판별: Windows 이거나, Streamlit Cloud 특유의 환경변수가 없으면 로컬로 본다.
+def _detect_local_env():
+    try:
+        # Streamlit Cloud는 이 환경변수들이 세팅됨
+        _cloud_markers = ("HOSTNAME", "STREAMLIT_SERVER_ADDRESS")
+        _is_cloud = any("streamlit" in str(os.environ.get(k, "")).lower()
+                        for k in _cloud_markers)
+        if _is_cloud:
+            return False
+        # mount/appuser 경로는 Streamlit Cloud 컨테이너 특징
+        if os.path.exists("/mount/src") or os.path.exists("/home/appuser"):
+            return False
+    except Exception:
+        pass
+    # 그 외(특히 Windows)는 로컬로 간주
+    return True
+
+_IS_LOCAL = _detect_local_env()
+
 
 # ODA File Converter 일반적 설치 경로 후보 (버전별)
 _ODA_CANDIDATE_PATHS = [
@@ -665,6 +755,8 @@ import ezdxf
 import numpy as np
 import streamlit as st
 import streamlit.components.v1 as components
+# 🌐 웹 배포본: easyocr는 선택적 의존성 (Streamlit Cloud에서 미설치 가능)
+#   미설치 시 OCR 기능만 자동 비활성화되고 나머지 변환 기능은 정상 동작
 try:
     import easyocr
     _EASYOCR_AVAILABLE = True
@@ -934,7 +1026,8 @@ PREVIEW_BG_OPTIONS = {
 st.set_page_config(
     page_title="DXF 변환 시스템",
     page_icon="📐",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # ══════════════════════════════════════════
@@ -983,31 +1076,42 @@ html, body, [class*="css"] {{ font-family: 'IBM Plex Sans', 'Pretendard', sans-s
 }}
 
 /* ══════════════════════════════════════════════════════════
-   사이드바 토글 버튼 (접힌 상태)
+   사이드바 열기 버튼 - 멀티버전 CSS (v6.9)
    ══════════════════════════════════════════════════════════ */
-[data-testid="collapsedControl"] {{
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"],
+[class*="collapsedControl"],
+[class*="SidebarCollapsed"] {{
     background: #1a3a5c !important;
     border-radius: 0 10px 10px 0 !important;
-    width: 32px !important; height: 80px !important;
+    width: 38px !important; height: 90px !important;
     top: 50% !important; transform: translateY(-50%) !important;
-    box-shadow: 3px 0 16px rgba(26,58,92,0.35) !important;
+    box-shadow: 4px 0 18px rgba(26,58,92,0.55) !important;
     display: flex !important; align-items: center !important; justify-content: center !important;
-    border: none !important; transition: all 0.2s ease !important;
-    position: fixed !important; left: 0 !important; z-index: 9999 !important;
+    border: none !important; transition: background 0.2s ease !important;
+    position: fixed !important; left: 0 !important; z-index: 999999 !important;
     cursor: pointer !important; opacity: 1 !important; visibility: visible !important;
+    pointer-events: all !important;
 }}
-[data-testid="collapsedControl"]:hover {{
+[data-testid="collapsedControl"]:hover,
+[data-testid="stSidebarCollapsedControl"]:hover,
+[class*="collapsedControl"]:hover {{
     background: #0078d4 !important;
-    box-shadow: 5px 0 20px rgba(0,120,212,0.4) !important;
+    box-shadow: 5px 0 20px rgba(0,120,212,0.5) !important;
 }}
-[data-testid="collapsedControl"] svg {{
-    color: #ffffff !important; width: 16px !important; height: 16px !important;
+[data-testid="collapsedControl"] svg,
+[data-testid="stSidebarCollapsedControl"] svg,
+[class*="collapsedControl"] svg {{
+    color: #ffffff !important; fill: #ffffff !important;
+    width: 18px !important; height: 18px !important;
 }}
 
 /* ══════════════════════════════════════════════════════════
    사이드바 폭 강제 고정
    ══════════════════════════════════════════════════════════ */
-section[data-testid="stSidebar"] {{
+/* ✅ [수정] 너비 고정은 "펼쳐진 상태(aria-expanded=true)"에만 적용.
+   접힐 때는 Streamlit 기본 동작(width 0px)이 살아나야 메인이 넓어지고 열기 버튼이 보인다. */
+section[data-testid="stSidebar"][aria-expanded="true"] {{
     width: 420px !important;
     min-width: 420px !important;
     max-width: 420px !important;
@@ -1018,22 +1122,30 @@ section[data-testid="stSidebar"] {{
     border-right: 1px solid #dde3ec !important;
     box-shadow: 2px 0 10px rgba(0,0,0,0.06) !important;
 }}
-[data-testid="stSidebar"] {{
-    width: 420px !important;
-    min-width: 420px !important;
-    max-width: 420px !important;
-}}
-section[data-testid="stSidebar"] > div,
-[data-testid="stSidebar"] > div {{
+section[data-testid="stSidebar"][aria-expanded="true"] > div,
+section[data-testid="stSidebar"][aria-expanded="true"] [data-testid="stSidebarContent"] {{
     width: 420px !important;
     min-width: 420px !important;
     max-width: 420px !important;
     overflow-x: hidden !important;
-}}
-[data-testid="stSidebarContent"] {{
-    width: 420px !important;
-    min-width: 420px !important;
     padding: 0 !important;
+}}
+
+/* ✅ [수정] 접힌 상태(aria-expanded=false)일 때 완전히 0px로 숨기고 메인 공간 확보 */
+section[data-testid="stSidebar"][aria-expanded="false"] {{
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    flex: 0 0 0 !important;
+    margin-left: 0 !important;
+    border-right: none !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+}}
+section[data-testid="stSidebar"][aria-expanded="false"] > div {{
+    width: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
 }}
 
 /* ══════════════════════════════════════════════════════════
@@ -1758,6 +1870,19 @@ body [data-testid="stSidebar"] [aria-roledescription="toggle"] > div:not(#_) {{
     text-overflow: ellipsis;
     white-space: nowrap;
 }}
+/* ✅ [추가] 변환 이력 - 작업자 이름 뱃지 */
+.history-worker {{
+    background: #fff4e0;
+    color: #b5631a;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.62rem;
+    font-weight: 600;
+    white-space: nowrap;
+    max-width: 70px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}}
 .history-count {{
     background: #1a3a5c;
     color: #ffffff;
@@ -1849,7 +1974,7 @@ button[kind="secondary"]:hover {{ background: #f5f7fa !important; border-color: 
     font-family: 'JetBrains Mono', monospace;
 }}
 </style>
-<div class="main-footer"><div class="main-footer-inner">📐 도면팀-이영세 (Lee &amp; Mock IP) all rights reserved · v6.2</div></div>
+<div class="main-footer"><div class="main-footer-inner">📐 도면팀-이영세 (Lee &amp; Mock IP) all rights reserved · v7.0</div></div>
 """, unsafe_allow_html=True)
 
 # ── 배경 이미지 별도 주입 ──
@@ -1926,6 +2051,7 @@ _init_sliders()
 
 @st.cache_resource
 def load_ocr_model():
+    # 🌐 웹 배포본: easyocr 미설치 환경에서는 None 반환 (OCR만 비활성화)
     if not _EASYOCR_AVAILABLE:
         return None
     return easyocr.Reader(['ko', 'en'], gpu=False)
@@ -1985,47 +2111,118 @@ def init_stats_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_conv_date ON conversions(conv_date)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_visit_date ON visits(visit_date)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_user_preset ON user_presets(user_id)")
+        # ✅ [추가] 변환 이력에 작업자 이름 컬럼 (기존 DB 보존: 이미 있으면 무시)
+        try:
+            _cols = [r[1] for r in c.execute("PRAGMA table_info(conversions)").fetchall()]
+            if "worker_name" not in _cols:
+                c.execute("ALTER TABLE conversions ADD COLUMN worker_name TEXT DEFAULT ''")
+        except Exception:
+            pass
+        # ✅ [추가] 작업자 이름 영구 저장 테이블 (vid 1개당 이름 1개)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS user_profile (
+                user_id TEXT PRIMARY KEY,
+                worker_name TEXT DEFAULT '',
+                updated_at TEXT
+            )
+        """)
+        # 🆕 v7.0: 온보딩 가이드 '봤음' 플래그 (이 PC에서 1번만 표시용, 기존 DB 보존)
+        try:
+            _pcols = [r[1] for r in c.execute("PRAGMA table_info(user_profile)").fetchall()]
+            if "onboarding_seen" not in _pcols:
+                c.execute("ALTER TABLE user_profile ADD COLUMN onboarding_seen INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+def _device_id_path():
+    """(하위호환 유지용 — 현재는 이름 기반 uid를 사용)"""
+    return os.path.join(_BASE_DIR, "device_id.txt")
+
+def _load_or_create_device_id():
+    """(하위호환 유지용 — 현재는 이름 기반 uid를 사용)"""
+    p = _device_id_path()
+    try:
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                v = (f.read() or "").strip()
+            if v and 6 <= len(v) <= 20:
+                return v
+    except Exception:
+        pass
+    new_v = str(uuid.uuid4())[:12]
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(new_v)
+    except Exception:
+        pass
+    return new_v
 
 def get_or_create_user_id():
     """
-    영구 방문자 ID 관리 — URL query_params 기반.
+    사용자 ID 관리 — 컴퓨터(브라우저) 도장 기반 (v7.2)
 
-    작동 원리:
-      ① URL에 ?vid=... 가 있으면 그걸 사용 (새로고침 후에도 브라우저가 URL 유지)
-      ② session_state에 있으면 URL에 쓰고 반환 (같은 탭, 재렌더링)
-      ③ 둘 다 없으면 UUID 생성 → URL + session_state 양쪽에 저장
+    ▒ 왜 바꿨나 ▒
+      예전(v7.0)은 '이름 = ID'였다. 그래서 주소(?vid=이영세)가 공유되면
+      다른 사람이 그 주소로 접속해도 이영세로 기록되는 문제가 있었다.
+      또 서버 device_id.txt 파일 1개를 모두가 공유해서 12명 구분이 안 됐다.
 
-    SQLite UNIQUE(user_id, visit_date) 제약으로 DB 레벨에서 최종 중복 방지.
-    브라우저를 완전히 닫으면 URL이 사라지므로 새 ID가 생성됩니다.
+    ▒ 새 방식 ▒
+      각 직원의 '브라우저' 안(localStorage)에만 저장되는 고유 도장(dev_id)을
+      ID로 쓴다. 이 도장은 JS가 발급해 URL ?dev= 로 한 번 넘겨준다.
+      (URL에 들어가는 건 이름이 아니라 의미 없는 도장번호라 신원 노출 없음)
+      이름은 이 도장에 연결된 '라벨'로 DB(user_profile)에 저장한다.
+
+    우선순위:
+      ① URL ?dev= 에 브라우저 도장이 있으면 → 그 도장을 uid로 사용 (정상 경로)
+      ② session_state에 이미 uid가 있으면 → 재사용 (같은 탭 재렌더링)
+      ③ (하위호환) 과거 ?vid= / ?wname= 에 '이름'이 박힌 옛 주소 → 그 이름을 uid로
+      ④ 그래도 없으면 → 임시 uuid (JS가 도장을 심고 새로고침하기 전까지 잠깐 사용)
+
+    반환값(uid)은 항상 문자열이며, 외부 호출부의 사용법은 기존과 동일하다.
     """
-    # ① URL query param 'vid' — 새로고침해도 브라우저가 URL을 유지함
+    # ① URL ?dev= 브라우저 도장이 최우선 (JS가 localStorage에서 읽어 심어줌)
     try:
-        vid = st.query_params.get("vid", None)
-        if vid and 6 <= len(vid) <= 20:
-            st.session_state["user_id"] = vid
-            return vid
+        _dev = (st.query_params.get("dev") or "").strip()
+        if _dev and 6 <= len(_dev) <= 40:
+            st.session_state["user_id"] = _dev
+            st.session_state["_dev_id"] = _dev
+            return _dev
     except Exception:
         pass
 
-    # ② session_state — 같은 탭 내 재렌더링 시 (URL보다 후순위)
+    # 🆕 v7.0: 로컬 실행이면 도장 절차를 건너뛰고 PC 고정 ID 사용
+    #   로컬은 항상 같은 PC·같은 사용자이므로 복잡한 브라우저 도장이 필요 없다.
+    #   고정 ID를 쓰면 새로고침·재실행에도 동일 ID라 방문기록·이름·이력이 안정적.
+    if _IS_LOCAL:
+        _local_id = "local-pc"
+        st.session_state["user_id"] = _local_id
+        st.session_state["_dev_id"] = _local_id
+        return _local_id
+
+    # ② 같은 탭 재렌더링 — session_state에 이미 도장/uid가 있으면 재사용
+    if st.session_state.get("_dev_id"):
+        return st.session_state["_dev_id"]
     if "user_id" in st.session_state:
-        uid = st.session_state["user_id"]
-        try:
-            # URL에 없으면 추가 (다음 새로고침 시 ①에서 읽힘)
-            if st.query_params.get("vid") != uid:
-                st.query_params["vid"] = uid
-        except Exception:
-            pass
-        return uid
+        return st.session_state["user_id"]
 
-    # ③ 완전 신규 방문 — UUID 생성 후 양쪽에 저장
-    new_id = str(uuid.uuid4())[:12]
-    st.session_state["user_id"] = new_id
-    try:
-        st.query_params["vid"] = new_id
-    except Exception:
-        pass
-    return new_id
+    # ③ (하위호환) 과거 '이름이 박힌' 주소로 접속한 경우만 이름을 uid로 인정
+    #    → 예전 사용자가 옛 즐겨찾기로 들어와도 자기 이력을 계속 보게 함
+    for _k in ("wname", "vid"):
+        try:
+            _old = (st.query_params.get(_k) or "").strip()
+        except Exception:
+            _old = ""
+        if _old and len(_old) >= 2:
+            _is_uuid = all(c in "0123456789abcdef-" for c in _old.lower())
+            if not _is_uuid:  # 한글/영문 이름이면 옛 이름-ID로 간주
+                st.session_state["worker_name"] = _old
+                st.session_state["user_id"] = _old
+                return _old
+
+    # ④ 완전 신규 — 임시 uuid (JS가 도장 심고 새로고침할 때까지 잠깐만 사용)
+    _tmp = "tmp-" + str(uuid.uuid4())[:12]
+    st.session_state["user_id"] = _tmp
+    return _tmp
 
 def record_visit(user_id):
     """
@@ -2048,17 +2245,84 @@ def record_visit(user_id):
     except Exception:
         return False
 
-def record_conversion(user_id, file_count, image_type, success=True):
+def record_conversion(user_id, file_count, image_type, success=True, worker_name=""):
     today = datetime.date.today().isoformat()
     now   = datetime.datetime.now().isoformat(timespec="seconds")
     try:
         with _db() as c:
             c.execute(
-                "INSERT INTO conversions (user_id, conv_date, conv_time, file_count, image_type, success) VALUES (?, ?, ?, ?, ?, ?)",
-                (user_id, today, now, int(file_count), str(image_type), 1 if success else 0)
+                "INSERT INTO conversions (user_id, conv_date, conv_time, file_count, image_type, success, worker_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (user_id, today, now, int(file_count), str(image_type), 1 if success else 0, str(worker_name or "").strip())
             )
     except Exception:
         pass
+
+# ✅ [추가] 작업자 이름 영구 저장 / 불러오기 (DB 기반 — 재부팅·주소변경에도 유지)
+def save_worker_name(user_id, worker_name):
+    """이 vid(user_id)의 작업자 이름을 DB에 영구 저장 (있으면 갱신)."""
+    if not user_id:
+        return
+    name = str(worker_name or "").strip()
+    now  = datetime.datetime.now().isoformat(timespec="seconds")
+    try:
+        with _db() as c:
+            c.execute("""
+                INSERT INTO user_profile (user_id, worker_name, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    worker_name=excluded.worker_name,
+                    updated_at=excluded.updated_at
+            """, (user_id, name, now))
+    except Exception:
+        pass
+
+def load_worker_name(user_id):
+    """이 vid(user_id)에 저장된 작업자 이름을 DB에서 불러옴. 없으면 빈 문자열."""
+    if not user_id:
+        return ""
+    try:
+        with _db() as c:
+            row = c.execute(
+                "SELECT worker_name FROM user_profile WHERE user_id=?",
+                (user_id,)
+            ).fetchone()
+        return (row[0] or "") if row else ""
+    except Exception:
+        return ""
+
+
+# 🆕 v7.0: 온보딩 가이드 '봤음' 여부 (이 PC에서 1번만 표시)
+def has_seen_onboarding(user_id):
+    """이 user_id가 온보딩 가이드를 이미 봤는지 DB에서 조회. 없으면 False."""
+    if not user_id:
+        return False
+    try:
+        with _db() as c:
+            row = c.execute(
+                "SELECT onboarding_seen FROM user_profile WHERE user_id=?",
+                (user_id,)
+            ).fetchone()
+        return bool(row[0]) if (row and row[0] is not None) else False
+    except Exception:
+        return False
+
+
+def mark_onboarding_seen(user_id):
+    """이 user_id의 온보딩 '봤음' 플래그를 DB에 영구 저장."""
+    if not user_id:
+        return
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    try:
+        with _db() as c:
+            # user_profile 행이 없을 수도 있으므로 UPSERT
+            c.execute("""
+                INSERT INTO user_profile (user_id, worker_name, updated_at, onboarding_seen)
+                VALUES (?, '', ?, 1)
+                ON CONFLICT(user_id) DO UPDATE SET onboarding_seen=1, updated_at=excluded.updated_at
+            """, (user_id, now))
+    except Exception:
+        pass
+
 
 def get_stats():
     today = datetime.date.today().isoformat()
@@ -2082,20 +2346,301 @@ def get_stats():
         return {"today_visitors": 0, "today_conv": 0, "total_conv": 0, "total_users": 0, "last_7days": []}
 
 # 🌟 v4.0: 변환 이력 조회 함수
-def get_recent_conversions(user_id, limit=15):
-    """현재 사용자의 최근 변환 내역을 조회"""
+def get_recent_conversions(user_id, limit=15, all_users=False):
+    """변환 내역 조회. all_users=True면 이 컴퓨터의 모든 이력을 조회."""
+    try:
+        with _db() as c:
+            # ✅ worker_name 포함 조회 (구버전 DB엔 컬럼이 없을 수 있어 fallback 처리)
+            if all_users:
+                _where = ""
+                _params = (limit,)
+            else:
+                _where = "WHERE user_id = ?"
+                _params = (user_id, limit)
+            try:
+                rows = c.execute(f"""
+                    SELECT conv_date, conv_time, file_count, image_type, success, worker_name
+                    FROM conversions
+                    {_where}
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, _params).fetchall()
+                return [{"date": r[0], "time": r[1], "count": r[2], "type": r[3],
+                         "success": bool(r[4]), "worker": (r[5] or "")} for r in rows]
+            except Exception:
+                rows = c.execute(f"""
+                    SELECT conv_date, conv_time, file_count, image_type, success
+                    FROM conversions
+                    {_where}
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, _params).fetchall()
+                return [{"date": r[0], "time": r[1], "count": r[2], "type": r[3],
+                         "success": bool(r[4]), "worker": ""} for r in rows]
+    except Exception:
+        return []
+
+
+# ══════════════════════════════════════════
+#  📊 v7.3: 사용 통계 대시보드용 집계 쿼리 (읽기 전용 — 기존 DB 스키마/데이터 변경 없음)
+# ══════════════════════════════════════════
+
+def get_worker_stats(days=30, limit=12):
+    """작업자별 변환 건수 집계 (최근 N일).
+    worker_name 컬럼이 없는 구버전 DB도 안전하게 처리한다.
+    반환: [{"worker": 이름, "count": 합계}, ...] (건수 내림차순)
+    """
+    try:
+        with _db() as c:
+            try:
+                rows = c.execute("""
+                    SELECT COALESCE(NULLIF(TRIM(worker_name), ''), '(이름없음)') AS w,
+                           COALESCE(SUM(file_count), 0) AS cnt
+                    FROM conversions
+                    WHERE success = 1 AND conv_date >= date('now', ?)
+                    GROUP BY w
+                    ORDER BY cnt DESC
+                    LIMIT ?
+                """, (f"-{int(days)-1} days", int(limit))).fetchall()
+            except Exception:
+                # 구버전 DB: worker_name 컬럼 자체가 없는 경우
+                return []
+            return [{"worker": r[0], "count": int(r[1] or 0)} for r in rows]
+    except Exception:
+        return []
+
+
+def get_type_distribution(days=30):
+    """도면 타입별 변환 건수 분포 (최근 N일).
+    긴 한글 라벨을 큰 그룹(기계도면 / 일반 이미지 / 기타)으로 묶어 가독성을 높인다.
+    반환: [{"type": 그룹명, "count": 합계}, ...] (건수 내림차순)
+    """
     try:
         with _db() as c:
             rows = c.execute("""
-                SELECT conv_date, conv_time, file_count, image_type, success
+                SELECT COALESCE(image_type, '(미지정)') AS t,
+                       COALESCE(SUM(file_count), 0) AS cnt
                 FROM conversions
-                WHERE user_id = ?
-                ORDER BY id DESC
-                LIMIT ?
-            """, (user_id, limit)).fetchall()
-        return [{"date": r[0], "time": r[1], "count": r[2], "type": r[3], "success": bool(r[4])} for r in rows]
+                WHERE success = 1 AND conv_date >= date('now', ?)
+                GROUP BY t
+            """, (f"-{int(days)-1} days",)).fetchall()
     except Exception:
         return []
+
+    # 큰 그룹으로 묶기 (실제 라벨: '기계도면 - 사시도', '일반 이미지(간략...)' 등)
+    grouped = {}
+    for t, cnt in rows:
+        name = t or "(미지정)"
+        if name.startswith("기계도면"):
+            key = "기계도면"
+        elif name.startswith("일반 이미지") or name.startswith("일반이미지"):
+            key = "일반 이미지"
+        elif name in ("(미지정)", ""):
+            key = "(미지정)"
+        else:
+            key = "기타"
+        grouped[key] = grouped.get(key, 0) + int(cnt or 0)
+
+    out = [{"type": k, "count": v} for k, v in grouped.items() if v > 0]
+    out.sort(key=lambda x: x["count"], reverse=True)
+    return out
+
+
+def get_dashboard_summary(days=30):
+    """대시보드 상단 요약 카드용 집계.
+    반환: {"total_conv","success_conv","fail_conv","success_rate",
+           "active_workers","period_days"}
+    success_rate 는 0~100 실수(소수 1자리).
+    """
+    res = {"total_conv": 0, "success_conv": 0, "fail_conv": 0,
+           "success_rate": 0.0, "active_workers": 0, "period_days": int(days)}
+    try:
+        since = f"-{int(days)-1} days"
+        with _db() as c:
+            row = c.execute("""
+                SELECT
+                    COALESCE(SUM(file_count), 0) AS total,
+                    COALESCE(SUM(CASE WHEN success = 1 THEN file_count ELSE 0 END), 0) AS succ
+                FROM conversions
+                WHERE conv_date >= date('now', ?)
+            """, (since,)).fetchone()
+            total = int(row[0] or 0)
+            succ = int(row[1] or 0)
+            res["total_conv"] = total
+            res["success_conv"] = succ
+            res["fail_conv"] = max(total - succ, 0)
+            res["success_rate"] = round((succ / total * 100.0), 1) if total > 0 else 0.0
+
+            # 활성 작업자 수 (이름이 기록된 경우만; 구버전 DB는 0)
+            try:
+                w = c.execute("""
+                    SELECT COUNT(DISTINCT NULLIF(TRIM(worker_name), ''))
+                    FROM conversions
+                    WHERE success = 1 AND conv_date >= date('now', ?)
+                """, (since,)).fetchone()
+                res["active_workers"] = int(w[0] or 0)
+            except Exception:
+                res["active_workers"] = 0
+    except Exception:
+        pass
+    return res
+
+
+def render_stats_main(stats, days=30):
+    """📊 v7.4.1: 메인 화면에 사용 통계를 콤팩트하게 그린다 (읽기 전용).
+    - 글자색을 명시(어두운 색)해 흰 배경에서도 또렷하게 보이도록 처리
+    - 차트 높이를 줄여 스크롤 없이 한 화면에 들어오도록 구성
+    - plotly가 없거나 오류가 나도 앱이 멈추지 않도록 전부 방어적으로 처리
+    stats: 이미 계산된 get_stats() 결과 (7일 추이 재사용용).
+    """
+    import streamlit as _st
+
+    # 공통 색상/스타일 (흰 배경에서도 잘 보이는 진한 색)
+    _C_TITLE = "#1a3a5c"     # 제목 진한 남색
+    _C_TXT   = "#334155"     # 일반 글자
+    _BAR     = "#378ADD"     # 막대 파랑
+    _LINEBAR = "#7F77DD"     # 추이 보라
+
+    def _section_title(_txt):
+        _st.markdown(
+            f"<div style='font-size:0.95rem;font-weight:700;color:{_C_TITLE};"
+            f"margin:6px 0 2px 0;'>{_txt}</div>",
+            unsafe_allow_html=True,
+        )
+
+    try:
+        # ── 기간 선택 ──
+        _period = _st.radio(
+            "집계 기간",
+            ["최근 7일", "최근 30일", "전체"],
+            index=1, horizontal=True, key="stats_main_period",
+        )
+        _days = {"최근 7일": 7, "최근 30일": 30, "전체": 36500}.get(_period, 30)
+
+        _summary = get_dashboard_summary(days=_days)
+
+        # ── 요약 카드 4개 (색 박은 HTML — 흰 글씨 문제 방지) ──
+        _cards = [
+            ("총 변환", f"{_summary['total_conv']:,}", "건", "#1a3a5c"),
+            ("성공률", f"{_summary['success_rate']:.1f}", "%", "#0f9d58"),
+            ("실패", f"{_summary['fail_conv']:,}", "건", "#d93025"),
+            ("활성 작업자", f"{_summary['active_workers']}", "명", "#1a3a5c"),
+        ]
+        _cards_html = "<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:4px 0 10px 0;'>"
+        for _lbl, _val, _unit, _vc in _cards:
+            _cards_html += (
+                "<div style='background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;"
+                "padding:8px 12px;'>"
+                f"<div style='font-size:0.72rem;color:#64748b;font-weight:500;margin-bottom:2px;'>{_lbl}</div>"
+                f"<div style='font-size:1.4rem;font-weight:700;color:{_vc};line-height:1.1;'>{_val}"
+                f"<span style='font-size:0.72rem;color:#94a3b8;margin-left:2px;'>{_unit}</span></div>"
+                "</div>"
+            )
+        _cards_html += "</div>"
+        _st.markdown(_cards_html, unsafe_allow_html=True)
+
+        # plotly 준비 (없으면 None → 텍스트 폴백)
+        try:
+            import plotly.graph_objects as _go
+        except Exception:
+            _go = None
+
+        _col_left, _col_right = _st.columns(2)
+
+        # ── 작업자별 변환 건수 (막대, 콤팩트) ──
+        with _col_left:
+            _section_title("👷 작업자별 변환 건수")
+            _wstats = get_worker_stats(days=_days, limit=12)
+            if _wstats:
+                if _go is not None:
+                    try:
+                        _names = [w["worker"] for w in _wstats]
+                        _vals = [w["count"] for w in _wstats]
+                        _fig = _go.Figure(_go.Bar(
+                            x=_names, y=_vals,
+                            text=_vals, textposition="outside",
+                            marker_color=_BAR,
+                        ))
+                        _fig.update_layout(
+                            height=230, margin=dict(l=8, r=8, t=24, b=8),
+                            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                            font=dict(color=_C_TXT, size=12),
+                            yaxis=dict(title=None, gridcolor="#e2e8f0"),
+                            xaxis=dict(title=None),
+                        )
+                        _st.plotly_chart(_fig, use_container_width=True,
+                                         config={"displayModeBar": False})
+                    except Exception:
+                        for _w in _wstats:
+                            _st.write(f"- {_w['worker']}: {_w['count']:,}건")
+                else:
+                    for _w in _wstats:
+                        _st.write(f"- {_w['worker']}: {_w['count']:,}건")
+            else:
+                _st.info("작업자 데이터가 없습니다.")
+
+        # ── 도면 타입 분포 (도넛, 콤팩트) ──
+        with _col_right:
+            _section_title("📐 도면 타입 분포")
+            _tdist = get_type_distribution(days=_days)
+            if _tdist:
+                if _go is not None:
+                    try:
+                        _labels = [t["type"] for t in _tdist]
+                        _values = [t["count"] for t in _tdist]
+                        _fig2 = _go.Figure(_go.Pie(
+                            labels=_labels, values=_values, hole=0.5,
+                            marker=dict(colors=["#1D9E75", "#EF9F27", "#B4B2A9",
+                                                "#7F77DD", "#D85A30"]),
+                            textinfo="label+percent",
+                            textfont=dict(size=12),
+                        ))
+                        _fig2.update_layout(
+                            height=230, margin=dict(l=8, r=8, t=24, b=8),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            font=dict(color=_C_TXT, size=12),
+                            showlegend=False,
+                        )
+                        _st.plotly_chart(_fig2, use_container_width=True,
+                                         config={"displayModeBar": False})
+                    except Exception:
+                        for _t in _tdist:
+                            _st.write(f"- {_t['type']}: {_t['count']:,}건")
+                else:
+                    for _t in _tdist:
+                        _st.write(f"- {_t['type']}: {_t['count']:,}건")
+            else:
+                _st.info("도면 타입 데이터가 없습니다.")
+
+        # ── 최근 7일 추이 (막대, 콤팩트) ──
+        _section_title("📈 최근 7일 변환 추이")
+        try:
+            _t7 = build_7day_chart_data(stats["last_7days"])
+            if _go is not None:
+                _dates = [d["date"][5:] for d in _t7]
+                _counts = [d["count"] for d in _t7]
+                _fig3 = _go.Figure(_go.Bar(
+                    x=_dates, y=_counts,
+                    text=_counts, textposition="outside",
+                    marker_color=_LINEBAR,
+                ))
+                _fig3.update_layout(
+                    height=200, margin=dict(l=8, r=8, t=24, b=8),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=_C_TXT, size=12),
+                    yaxis=dict(title=None, gridcolor="#e2e8f0"),
+                    xaxis=dict(title=None),
+                )
+                _st.plotly_chart(_fig3, use_container_width=True,
+                                 config={"displayModeBar": False})
+            else:
+                for _d in _t7:
+                    _st.write(f"- {_d['date'][5:]}: {_d['count']:,}건")
+        except Exception:
+            _st.caption("추이 데이터를 표시할 수 없습니다.")
+
+    except Exception as _e:
+        _st.warning(f"통계 화면을 표시할 수 없습니다: {_e}")
 
 
 # ══════════════════════════════════════════
@@ -2456,6 +3001,53 @@ def extract_long_lines_hough(binary, min_length=40, max_gap=8, threshold=50):
         cv2.line(masked, (x1, y1), (x2, y2), 0, thickness=3)
     return out, masked
 
+def _make_skeleton(binary, use_fast_thinning=False):
+    """🆕 v7.3: 이진 이미지 → 1픽셀 스켈레톤 공용 헬퍼.
+
+    use_fast_thinning=True 이고 opencv-contrib(cv2.ximgproc)가 있으면
+    GUOHALL thinning(C++ 구현)을 사용한다 — skimage 대비 3~10배 빠름.
+    미설치·실패 시 기존 skimage.skeletonize로 자동 폴백 → 기존 동작 100% 보존.
+    """
+    if use_fast_thinning:
+        try:
+            if hasattr(cv2, "ximgproc"):
+                src = (binary > 0).astype(np.uint8) * 255
+                return cv2.ximgproc.thinning(src, thinningType=cv2.ximgproc.THINNING_GUOHALL)
+        except Exception:
+            pass
+    return skeletonize(binary > 0).astype(np.uint8) * 255
+
+def extract_long_lines_fld(binary, min_length=40, max_gap=8, threshold=50):
+    """🆕 v7.3: FLD(FastLineDetector, opencv-contrib) 기반 직선 추출.
+
+    HoughLinesP보다 직선 끊김이 적고 파라미터 민감도가 낮다.
+    반환 형식은 extract_long_lines_hough()와 동일: (선 목록, 선이 지워진 binary)
+    ximgproc 미설치·실패 시 HoughLinesP로 자동 폴백 (max_gap/threshold 전달).
+    """
+    try:
+        if not hasattr(cv2, "ximgproc"):
+            raise RuntimeError("cv2.ximgproc 미설치")
+        fld = cv2.ximgproc.createFastLineDetector(
+            length_threshold=int(min_length),
+            distance_threshold=1.414,
+            canny_th1=50, canny_th2=150, canny_aperture_size=3,
+            do_merge=True)
+        lines_raw = fld.detect(binary)
+        masked = binary.copy()
+        out = []
+        if lines_raw is not None:
+            for l in lines_raw:
+                x1, y1, x2, y2 = map(float, l[0])
+                if math.hypot(x2 - x1, y2 - y1) < float(min_length):
+                    continue
+                out.append(((x1, y1), (x2, y2)))
+                cv2.line(masked, (int(round(x1)), int(round(y1))),
+                         (int(round(x2)), int(round(y2))), 0, thickness=3)
+        return out, masked
+    except Exception:
+        return extract_long_lines_hough(binary, min_length=min_length,
+                                        max_gap=max_gap, threshold=threshold)
+
 def filter_short_paths(paths, min_length_px=8.0):
     out = []
     for p in paths:
@@ -2497,6 +3089,15 @@ def stitch_close_paths(paths, max_gap_px=4.0, min_direction_cos=None):
         return score >= float(min_direction_cos)
 
     used = [False] * len(paths)
+    # 🆕 v7.3 [성능]: KD-tree로 '가까운 끝점 후보'만 골라 검사.
+    #   기존 O(n²) 전체 순회 → path가 수천 개인 대형 도면에서 수십 배 빠름.
+    #   후보를 인덱스 오름차순으로 검사하고 거리·방향 조건도 그대로 재확인하므로
+    #   병합 결과는 기존 알고리즘과 동일하다. (KDTree 실패 시 전체 순회 폴백)
+    try:
+        _tree_s = KDTree(np.array([p[0]  for p in paths], dtype=float))
+        _tree_e = KDTree(np.array([p[-1] for p in paths], dtype=float))
+    except Exception:
+        _tree_s = _tree_e = None
     out = []
     for i, p in enumerate(paths):
         if used[i]: continue
@@ -2507,7 +3108,16 @@ def stitch_close_paths(paths, max_gap_px=4.0, min_direction_cos=None):
             changed = False
             current_start = chain[0][0]
             current_end   = chain[-1][-1]
-            for j, q in enumerate(paths):
+            if _tree_s is not None:
+                _cand = set()
+                for _qp in (current_end, current_start):
+                    _cand.update(_tree_s.query_ball_point(_qp, r=float(max_gap_px)))
+                    _cand.update(_tree_e.query_ball_point(_qp, r=float(max_gap_px)))
+                _j_iter = sorted(_cand)
+            else:
+                _j_iter = range(len(paths))
+            for j in _j_iter:
+                q = paths[j]
                 if used[j]: continue
                 qs, qe = q[0], q[-1]
                 d_es = math.hypot(current_end[0] - qs[0], current_end[1] - qs[1])
@@ -2756,6 +3366,70 @@ def calculate_quality_score(report, path_count_raw=0, path_count_clean=0):
     }
 
 
+def diagnose_quality(report):
+    """
+    [v7.0 NEW] 품질 점수의 항목별 breakdown을 보고
+    '왜 점수가 낮은지 + 어떤 옵션을 조정하면 되는지'를 사람이 읽기 쉬운 팁으로 변환.
+
+    반환: [{"icon": str, "title": str, "tip": str}, ...]  (약한 항목 순서)
+    빈 리스트면 = 특별히 고칠 게 없음(양호).
+    """
+    bd = report.get("quality_breakdown", {})
+    if not bd:
+        return []
+
+    lines    = int(report.get("lines", 0))
+    circles  = int(report.get("circles", 0))
+    score    = int(report.get("quality_score", 0))
+
+    # 각 항목의 만점 대비 비율 계산
+    cont = int(bd.get("continuity", 0))    # /40
+    geo  = int(bd.get("geometry", 0))      # /25
+    clean= int(bd.get("cleanliness", 0))   # /20
+    yld  = int(bd.get("yield", 0))         # /15
+
+    tips = []
+
+    # ① 선 연속성이 약함 (40점 만점 중 28점 미만 = 70% 미만)
+    if cont < 28:
+        tips.append({
+            "icon": "🪡",
+            "title": "선이 군데군데 끊겨 있습니다",
+            "tip": "사이드바 고급 옵션의 '🪡 끊어진 선 잇기(px)' 값을 높이거나, "
+                   "'🔗 끊어진 선 연결(Gap Bridge)'을 켜보세요. "
+                   "잔가지가 많다면 '🧬 잔가지 자동 제거'도 도움이 됩니다."
+        })
+
+    # ② 변환 성공도가 약함 (선 자체가 너무 적게 추출됨)
+    if yld < 8 or lines < 5:
+        tips.append({
+            "icon": "🔍",
+            "title": f"추출된 선이 적습니다 (선 {lines}개)",
+            "tip": "도면 종류의 '인식 민감도'를 조정해보세요. "
+                   "선이 흐릿하면 '엣지 강화'를 켜고, 너무 얇으면 '📏 선 두께 정규화'를 켜보세요."
+        })
+
+    # ③ 기하 인식이 약함 (원/호가 거의 안 잡힘)
+    if geo < 12 and (circles == 0):
+        tips.append({
+            "icon": "⭕",
+            "title": "원/호가 인식되지 않았습니다",
+            "tip": "도면에 원이나 곡선이 있다면 '⭕ 호/원 자동 인식(ARC/CIRCLE)'을 켜고 "
+                   "'원 인식 민감도'를 올려보세요. (직선만 있는 도면이면 무시해도 됩니다.)"
+        })
+
+    # ④ 깔끔함이 약함 (경고/노이즈 많음)
+    if clean < 14:
+        tips.append({
+            "icon": "🧹",
+            "title": "노이즈나 군더더기 선이 많습니다",
+            "tip": "'🧹 노이즈 점 제거(Speckle)'를 켜거나 '최소 유지 면적'을 높여보세요. "
+                   "중복선이 많으면 사이드바의 중복 제거 거리를 키워보세요."
+        })
+
+    return tips
+
+
 def apply_crop_to_bytes(img_bytes, top_pct, bottom_pct, left_pct, right_pct):
     """
     [v5.0 NEW] 이미지 바이트를 받아 상하좌우 %만큼 잘라낸 PNG 바이트를 반환.
@@ -2856,7 +3530,7 @@ def _is_path_closed(pts_xy_pixel, close_threshold_px=3.0):
 
 
 def _add_lwpolyline_auto(msp, pts_xy_pixel, pts_dxf_2d, dxfattribs,
-                         close_threshold_px=3.0):
+                         close_threshold_px=3.0, force_close=None):
     """🆕 v6.4 [개선 ③]: lwpolyline 추가 + 닫힌 도형이면 자동 close().
     - pts_xy_pixel: 픽셀 좌표 (닫힘 판정용)
     - pts_dxf_2d  : 이미 to_pt()로 변환된 DXF 좌표 리스트
@@ -2866,7 +3540,10 @@ def _add_lwpolyline_auto(msp, pts_xy_pixel, pts_dxf_2d, dxfattribs,
     if not pts_dxf_2d or len(pts_dxf_2d) < 2:
         return None
     pline = msp.add_lwpolyline(pts_dxf_2d, dxfattribs=dxfattribs)
-    if _is_path_closed(pts_xy_pixel, close_threshold_px=close_threshold_px):
+    # 🆕 v7.3: force_close가 명시되면 그 값을 우선 (closed=True 단순화 결과 보호용)
+    _do_close = force_close if force_close is not None \
+                else _is_path_closed(pts_xy_pixel, close_threshold_px=close_threshold_px)
+    if _do_close:
         try:
             pline.close(True)
         except Exception:
@@ -3486,9 +4163,64 @@ def add_dxf_linetypes(doc):
 #  🆕 v6.0: 래스터 오버레이 미리보기
 # ══════════════════════════════════════════
 
-def render_dxf_overlay_preview(img_bytes, dxf_bytes, raster_alpha=0.40,
-                                bg_color="#1a1d2e", line_color="#e0e4ef"):
-    """원본 래스터 이미지 + DXF 선을 겹쳐서 matplotlib Figure 반환."""
+# ═══════════════════════════════════════════════════════════
+#  🔍 v7.0: 전체화면 원본↔결과 비교 (st.dialog 기반)
+# ═══════════════════════════════════════════════════════════
+def _has_dialog():
+    """현재 Streamlit 버전이 st.dialog를 지원하는지 확인."""
+    return hasattr(st, "dialog")
+
+def _render_fullscreen_compare(img_bytes, dxf_bytes, overlay_alpha=0.45,
+                               bg_color="#1a1d2e", line_color="#e0e4ef"):
+    """
+    전체화면 비교 본문 — dialog 안/밖 모두에서 호출 가능.
+    좌: 원본 이미지 / 우: DXF 미리보기 를 크게 나란히 + 하단에 겹쳐보기(오버레이).
+    """
+    st.markdown(
+        "<div style='font-size:0.82rem;color:#5a7a96;margin-bottom:8px;'>"
+        "왼쪽 <b>원본</b>과 오른쪽 <b>DWG 결과</b>를 크게 비교하세요. "
+        "맨 아래 <b>겹쳐보기</b>에서 원본 위에 결과 선을 포개 누락·왜곡을 확인할 수 있습니다.</div>",
+        unsafe_allow_html=True
+    )
+    _c1, _c2 = st.columns(2, gap="small")
+    with _c1:
+        st.markdown("<div style='font-weight:600;color:#1a3a5c;margin-bottom:4px;'>📄 원본 이미지</div>",
+                    unsafe_allow_html=True)
+        st.image(img_bytes, use_container_width=True)
+    with _c2:
+        st.markdown("<div style='font-weight:600;color:#1a3a5c;margin-bottom:4px;'>📐 DWG 결과</div>",
+                    unsafe_allow_html=True)
+        try:
+            _fig = render_dxf_preview(dxf_bytes, bg_color=bg_color, line_color=line_color)
+            if _fig is None or isinstance(_fig, str):
+                st.info("DWG 미리보기를 표시할 수 없습니다.")
+            elif _PLOTLY_AVAILABLE and hasattr(_fig, "_is_plotly"):
+                st.plotly_chart(_fig, use_container_width=True,
+                                config={"scrollZoom": True, "displayModeBar": True})
+            else:
+                st.pyplot(_fig, use_container_width=True)
+                plt.close(_fig)
+        except Exception as _e:
+            st.warning(f"DWG 렌더 오류: {_e}")
+
+    st.markdown("<div style='font-weight:600;color:#1a3a5c;margin:14px 0 4px;'>"
+                "🖼️ 겹쳐보기 (원본 + DWG 포개기)</div>", unsafe_allow_html=True)
+    _ov_alpha = st.slider("원본 투명도", 0.05, 0.95, float(overlay_alpha), 0.05,
+                          key="fs_overlay_alpha",
+                          help="낮을수록 결과 선이 또렷하게, 높을수록 원본이 잘 보입니다.")
+    try:
+        _ov_fig = render_dxf_overlay_preview(img_bytes, dxf_bytes,
+                                             raster_alpha=_ov_alpha,
+                                             bg_color=bg_color, line_color=line_color)
+        if _ov_fig is not None and not isinstance(_ov_fig, str):
+            st.pyplot(_ov_fig, use_container_width=True)
+            plt.close(_ov_fig)
+        else:
+            st.info("겹쳐보기를 생성할 수 없습니다.")
+    except Exception as _e:
+        st.warning(f"겹쳐보기 오류: {_e}")
+
+
     arr = np.asarray(bytearray(img_bytes), dtype=np.uint8)
     img_cv = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img_cv is None:
@@ -3959,7 +4691,7 @@ def detect_and_mask_circles(gray_img, binary, use_hough, circle_sens, circle_min
         cv2.circle(masked, (int(x), int(y)), int(r) + 2, 0, -1)
     return detected, masked
 
-def preprocess_bytes(img_gray, image_type, threshold_val, masked_binary=None, use_enhance=False, sharpen_strength=1.0, use_normalize=False, normalize_thickness=2, use_deskew=False, use_speckle=False, min_speckle_area=20, use_gap_bridge=False, gap_bridge_size=3):
+def preprocess_bytes(img_gray, image_type, threshold_val, masked_binary=None, use_enhance=False, sharpen_strength=1.0, use_normalize=False, normalize_thickness=2, use_deskew=False, use_speckle=False, min_speckle_area=20, use_gap_bridge=False, gap_bridge_size=3, use_fast_thinning=False):
     # 🆕 v6.0: Deskew 기울기 보정 (이진화 전에 원본 gray에 적용)
     if use_deskew:
         img_gray, _ = deskew_image(img_gray)
@@ -3973,13 +4705,13 @@ def preprocess_bytes(img_gray, image_type, threshold_val, masked_binary=None, us
         binary = _apply_clean(masked_binary)
         if use_normalize:
             binary = normalize_line_thickness(binary, normalize_thickness)
-        return skeletonize(binary > 0).astype(np.uint8) * 255
+        return _make_skeleton(binary, use_fast_thinning)  # 🆕 v7.3: 고속 스켈레톤 옵션
 
     if use_enhance:
         binary = _apply_clean(enhance_edge(img_gray, sharpen_strength))
         if use_normalize:
             binary = normalize_line_thickness(binary, normalize_thickness)
-        return skeletonize(binary > 0).astype(np.uint8) * 255
+        return _make_skeleton(binary, use_fast_thinning)  # 🆕 v7.3: 고속 스켈레톤 옵션
 
     if image_type == "깔끔한 디지털 선화":
         _, binary = cv2.threshold(img_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
@@ -3996,7 +4728,7 @@ def preprocess_bytes(img_gray, image_type, threshold_val, masked_binary=None, us
     binary = _apply_clean(binary)
     if use_normalize:
         binary = normalize_line_thickness(binary, normalize_thickness)
-    return skeletonize(binary > 0).astype(np.uint8) * 255
+    return _make_skeleton(binary, use_fast_thinning)  # 🆕 v7.3: 고속 스켈레톤 옵션
 
 def extract_skeleton_paths(skeleton, min_points=4, min_bbox_area=30):
     h, w    = skeleton.shape
@@ -4084,7 +4816,9 @@ def convert_to_dxf_bytes(
     # 🪄 v6.1 신규 파라미터
     use_auto_cleanup=False, cleanup_level="standard",
     # 🆕 v6.3 신규 파라미터
-    use_super_resolution=True, sr_threshold_px=1500
+    use_super_resolution=True, sr_threshold_px=1500,
+    # 🆕 v7.3 신규 파라미터 (둘 다 기본 OFF — 기존 동작 100% 보존)
+    use_fast_thinning=False, use_fld_lines=False
 ):
     arr       = np.asarray(bytearray(file_bytes), dtype=np.uint8)
     img_color = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -4105,9 +4839,9 @@ def convert_to_dxf_bytes(
 
     text_data = []
     if use_ocr:
+        # 🌐 웹 배포본: easyocr 미설치 환경(Streamlit Cloud 등) — OCR 조용히 건너뜀
         _ocr_model = load_ocr_model()
         if _ocr_model is None:
-            # easyocr 미설치 환경 (Streamlit Cloud 등) — OCR 조용히 건너뜀
             report["warnings"].append("⚠️ OCR 기능 비활성화 (easyocr 미설치 환경)")
         else:
             results = _ocr_model.readtext(img_color, width_ths=0.7)
@@ -4115,7 +4849,12 @@ def convert_to_dxf_bytes(
                 # 🆕 v6.3: 신뢰도 임계값 0.3 → 0.5 상향 (노이즈 오인식 차단)
                 if prob > 0.5:
                     text_data.append((text, bbox[0], bbox[2], float(prob)))
-                cv2.rectangle(img_color, (int(bbox[0][0]), int(bbox[0][1])), (int(bbox[2][0]), int(bbox[2][1])), (255, 255, 255), -1)
+                    cv2.rectangle(img_color, (int(bbox[0][0]), int(bbox[0][1])), (int(bbox[2][0]), int(bbox[2][1])), (255, 255, 255), -1)
+            # 🆕 v7.3 [버그수정 ①]: 글자를 흰색으로 지운 결과를 회색 이미지에도 반영
+            #   (기존엔 img_gray가 OCR 이전에 만들어져 있어서, 글자 획이 선으로도
+            #    벡터화되고 TEXT 객체와 이중으로 겹치는 문제가 있었음)
+            if text_data:
+                img_gray = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
 
     doc = ezdxf.new(dxfversion="R2010")
     msp = doc.modelspace()
@@ -4184,18 +4923,27 @@ def convert_to_dxf_bytes(
                 report["patterns"] += len(patterns)
 
         if use_hough_lines:
-            hough_lines, masked_bin = extract_long_lines_hough(masked_bin, min_length=hough_min_len, max_gap=hough_max_gap, threshold=hough_thresh)
+            # 🆕 v7.3: FLD(FastLineDetector) 엔진 선택 시 Hough 대신 사용 (미설치 시 자동 폴백)
+            if use_fld_lines:
+                hough_lines, masked_bin = extract_long_lines_fld(masked_bin, min_length=hough_min_len, max_gap=hough_max_gap, threshold=hough_thresh)
+                _line_engine = "FLD(FastLineDetector)"
+            else:
+                hough_lines, masked_bin = extract_long_lines_hough(masked_bin, min_length=hough_min_len, max_gap=hough_max_gap, threshold=hough_thresh)
+                _line_engine = "HoughLinesP"
             for (p1, p2) in hough_lines:
                 a, b = p1, p2
                 if use_angle_snap: a, b = snap_angle(p1, p2, tolerance_deg=snap_tol_deg)
                 msp.add_line(to_pt(a[0], a[1]), to_pt(b[0], b[1]), dxfattribs={"layer": layer_name})
                 report["lines"] += 1
-            report["warnings"].append(f"HoughLinesP 직선 추출: {len(hough_lines)}개")
+            report["warnings"].append(f"{_line_engine} 직선 추출: {len(hough_lines)}개")
 
-        skeleton = skeletonize(masked_bin > 0).astype(np.uint8) * 255
+        # 🆕 v7.3 [성능]: normalize ON일 때 skeleton을 두 번 만들던 낭비 제거 (결과 동일)
+        #               + 🚀 고속 스켈레톤(GUOHALL thinning) 옵션 지원
         if use_normalize:
             masked_norm = normalize_line_thickness(masked_bin, normalize_thickness)
-            skeleton = skeletonize(masked_norm > 0).astype(np.uint8) * 255
+            skeleton = _make_skeleton(masked_norm, use_fast_thinning)
+        else:
+            skeleton = _make_skeleton(masked_bin, use_fast_thinning)
         # 🌟 v5.0: 잔가지(spur) 자동 제거
         if use_spur_prune:
             skel_before_pixels = int(np.count_nonzero(skeleton))
@@ -4251,10 +4999,19 @@ def convert_to_dxf_bytes(
                     xmax, ymax = hatch_pts_all.max(axis=0)
                     cx, cy = (xmin+xmax)/2, (ymin+ymax)/2
                     hw, hh = (xmax-xmin)/2, (ymax-ymin)/2
-                    msp.add_solid([
-                        to_pt(cx-hw, cy-hh), to_pt(cx+hw, cy-hh),
-                        to_pt(cx-hw, cy+hh), to_pt(cx+hw, cy+hh)
-                    ], dxfattribs={"layer": "HATCH"})
+                    # 🆕 v7.3: 진짜 HATCH 엔티티(ANSI31 패턴) — AutoCAD에서 해치로 편집 가능
+                    try:
+                        _h_corners = [to_pt(cx-hw, cy-hh), to_pt(cx+hw, cy-hh),
+                                      to_pt(cx+hw, cy+hh), to_pt(cx-hw, cy+hh)]
+                        _hatch_ent = msp.add_hatch(dxfattribs={"layer": "HATCH"})
+                        _hatch_ent.set_pattern_fill("ANSI31", scale=max(0.1, float(scale) * 10.0))
+                        _hatch_ent.paths.add_polyline_path(_h_corners, is_closed=True)
+                    except Exception:
+                        # HATCH 생성 실패 시 기존 SOLID 방식으로 안전 폴백 (기존 동작)
+                        msp.add_solid([
+                            to_pt(cx-hw, cy-hh), to_pt(cx+hw, cy-hh),
+                            to_pt(cx-hw, cy+hh), to_pt(cx+hw, cy+hh)
+                        ], dxfattribs={"layer": "HATCH"})
                     _hatch_report += 1
                 except Exception:
                     pass
@@ -4306,7 +5063,17 @@ def convert_to_dxf_bytes(
                         angle_diff = abs(ang1 - ang2)
                         if angle_diff > 180: angle_diff = 360 - angle_diff
                         if angle_diff > 10.0:
-                            msp.add_arc(to_pt(center[0], center[1]), r * scale, min(ang1, ang2), max(ang1, ang2), dxfattribs={"layer": _target_layer})
+                            # 🆕 v7.3 [버그수정 ②]: 호 방향 판정 — path 중간점이 포함된 쪽 호를 선택
+                            #   (DXF ARC는 항상 반시계 방향 시작각→끝각으로 그려지므로,
+                            #    무조건 min→max로 그리면 절반 확률로 반대쪽 호가 생성되었음)
+                            _pm   = smoothed[len(smoothed) // 2]
+                            _angm = math.degrees(math.atan2(-(_pm[1] - center[1]), _pm[0] - center[0])) % 360
+                            _a_lo, _a_hi = min(ang1, ang2), max(ang1, ang2)
+                            if _a_lo <= _angm <= _a_hi:
+                                _arc_s, _arc_e = _a_lo, _a_hi
+                            else:
+                                _arc_s, _arc_e = _a_hi, _a_lo  # 0°(=360°)를 가로지르는 반대쪽 호
+                            msp.add_arc(to_pt(center[0], center[1]), r * scale, _arc_s, _arc_e, dxfattribs={"layer": _target_layer})
                             report["lines"] += 1; fitted_geom = True
 
             if not fitted_geom:
@@ -4319,23 +5086,27 @@ def convert_to_dxf_bytes(
                     except Exception:
                         # 🆕 v6.4 [개선 ④]: adaptive epsilon  /  [개선 ③]: closed path 자동 인식
                         _eps_adj = _adaptive_epsilon(smoothed, s_eps)
-                        sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, False).reshape(-1, 2)
+                        _was_closed = _is_path_closed(smoothed)  # 🆕 v7.3: 단순화 전에 닫힘 판정
+                        sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, _was_closed).reshape(-1, 2)
                         if len(sim) >= 2:
                             _add_lwpolyline_auto(msp, sim,
                                 [to_pt(x, y) for x, y in sim],
-                                dxfattribs={"layer": _target_layer})
+                                dxfattribs={"layer": _target_layer},
+                                force_close=_was_closed)
                 else:
                     # 🆕 v6.4 [개선 ④]: adaptive epsilon  /  [개선 ③]: closed path 자동 인식
                     _eps_adj = _adaptive_epsilon(smoothed, s_eps)
-                    sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, False).reshape(-1, 2)
+                    _was_closed = _is_path_closed(smoothed)  # 🆕 v7.3: 단순화 전에 닫힘 판정
+                    sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, _was_closed).reshape(-1, 2)
                     if len(sim) >= 2:
                         _add_lwpolyline_auto(msp, sim,
                             [to_pt(x, y) for x, y in sim],
-                            dxfattribs={"layer": _target_layer})
+                            dxfattribs={"layer": _target_layer},
+                            force_close=_was_closed)
                 report["lines"] += 1
 
     elif image_type == "깔끔한 디지털 선화":
-        skeleton = preprocess_bytes(img_gray, image_type, t_val, use_enhance=use_enhance, sharpen_strength=sharpen_strength, use_normalize=use_normalize, normalize_thickness=normalize_thickness)
+        skeleton = preprocess_bytes(img_gray, image_type, t_val, use_enhance=use_enhance, sharpen_strength=sharpen_strength, use_normalize=use_normalize, normalize_thickness=normalize_thickness, use_fast_thinning=use_fast_thinning)
         # 🌟 v5.0: 잔가지 제거
         if use_spur_prune:
             sb = int(np.count_nonzero(skeleton))
@@ -4367,18 +5138,20 @@ def convert_to_dxf_bytes(
                 smoothed = smooth_path(p, s_win)
             # 🆕 v6.4 [개선 ④]: adaptive epsilon  /  [개선 ③]: closed path 자동 인식
             _eps_adj = _adaptive_epsilon(smoothed, s_eps)
-            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, False).reshape(-1, 2)
+            _was_closed = _is_path_closed(smoothed)  # 🆕 v7.3: 단순화 전에 닫힘 판정
+            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, _was_closed).reshape(-1, 2)
             if len(sim) >= 2:
                 _add_lwpolyline_auto(msp, sim,
                     [to_pt(x, y) for x, y in sim],
-                    dxfattribs={"layer": layer_name})
+                    dxfattribs={"layer": layer_name},
+                    force_close=_was_closed)
             report["lines"] += 1
 
     elif image_type == "일반 이미지(풍성한 표현,두줄)":
         _, thresh = cv2.threshold(img_gray, t_val, 255, cv2.THRESH_BINARY_INV)
         if use_normalize:
             thresh = normalize_line_thickness(thresh, normalize_thickness)
-        skeleton = skeletonize(thresh > 0).astype(np.uint8) * 255
+        skeleton = _make_skeleton(thresh, use_fast_thinning)  # 🆕 v7.3: 고속 스켈레톤 옵션
         # 🌟 v5.0: 잔가지 제거
         if use_spur_prune:
             sb = int(np.count_nonzero(skeleton))
@@ -4409,15 +5182,17 @@ def convert_to_dxf_bytes(
                 smoothed = smooth_path(p, s_win)
             # 🆕 v6.4 [개선 ④]: adaptive epsilon  /  [개선 ③]: closed path 자동 인식
             _eps_adj = _adaptive_epsilon(smoothed, epsilon)
-            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, False).reshape(-1, 2)
+            _was_closed = _is_path_closed(smoothed)  # 🆕 v7.3: 단순화 전에 닫힘 판정
+            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, _was_closed).reshape(-1, 2)
             if len(sim) >= 2:
                 _add_lwpolyline_auto(msp, sim,
                     [to_pt(x, y) for x, y in sim],
-                    dxfattribs={"layer": layer_name})
+                    dxfattribs={"layer": layer_name},
+                    force_close=_was_closed)
             report["lines"] += 1
 
     else:
-        skeleton = preprocess_bytes(img_gray, image_type, t_val, use_enhance=use_enhance, sharpen_strength=sharpen_strength, use_normalize=use_normalize, normalize_thickness=normalize_thickness)
+        skeleton = preprocess_bytes(img_gray, image_type, t_val, use_enhance=use_enhance, sharpen_strength=sharpen_strength, use_normalize=use_normalize, normalize_thickness=normalize_thickness, use_fast_thinning=use_fast_thinning)
         # 🌟 v5.0: 잔가지 제거
         if use_spur_prune:
             sb = int(np.count_nonzero(skeleton))
@@ -4448,11 +5223,13 @@ def convert_to_dxf_bytes(
                 smoothed = smooth_path(p, s_win)
             # 🆕 v6.4 [개선 ④]: adaptive epsilon  /  [개선 ③]: closed path 자동 인식
             _eps_adj = _adaptive_epsilon(smoothed, s_eps)
-            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, False).reshape(-1, 2)
+            _was_closed = _is_path_closed(smoothed)  # 🆕 v7.3: 단순화 전에 닫힘 판정
+            sim = cv2.approxPolyDP(smoothed.reshape(-1, 1, 2).astype(np.float32), _eps_adj, _was_closed).reshape(-1, 2)
             if len(sim) >= 2:
                 _add_lwpolyline_auto(msp, sim,
                     [to_pt(x, y) for x, y in sim],
-                    dxfattribs={"layer": layer_name})
+                    dxfattribs={"layer": layer_name},
+                    force_close=_was_closed)
             report["lines"] += 1
 
     # 🆕 v6.3: OCR 결과를 MTEXT 엔티티로 (한글 멀티라인 + CAD 편집성)
@@ -4497,6 +5274,15 @@ def convert_to_dxf_bytes(
     report["quality_grade"] = _q["grade"]
     report["quality_breakdown"] = _q["breakdown"]
 
+    # 🆕 v7.3: 저장 전 ezdxf 자가검수(audit) — 깨진 엔티티 자동 수리/제거로
+    #          'AutoCAD에서 안 열리는 DXF'를 사전에 차단한다. 실패해도 변환은 계속.
+    try:
+        _auditor = doc.audit()
+        if getattr(_auditor, "fixes", None):
+            report["warnings"].append(f"🩺 DXF 자가수리: {len(_auditor.fixes)}건 자동 수정")
+    except Exception:
+        pass
+
     out = io.StringIO()
     doc.write(out)
     return out.getvalue().encode("utf-8"), report
@@ -4525,7 +5311,9 @@ def convert_for_preview(img_bytes, layer_name, image_type, use_ocr,
                         # 🪄 v6.1 신규
                         use_auto_cleanup=False, cleanup_level="standard",
                         # 🆕 v6.3 신규
-                        use_super_resolution=True, sr_threshold_px=1500):
+                        use_super_resolution=True, sr_threshold_px=1500,
+                        # 🆕 v7.3 신규
+                        use_fast_thinning=False, use_fld_lines=False):
     dxf_bytes, _ = convert_to_dxf_bytes(
         img_bytes, layer_name, image_type, use_ocr,
         t_val, s_tol, s_eps, s_den, s_win, epsilon,
@@ -4547,9 +5335,654 @@ def convert_for_preview(img_bytes, layer_name, image_type, use_ocr,
         # 🪄 v6.1
         use_auto_cleanup, cleanup_level,
         # 🆕 v6.3
-        use_super_resolution, sr_threshold_px
+        use_super_resolution, sr_threshold_px,
+        # 🆕 v7.3
+        use_fast_thinning=use_fast_thinning, use_fld_lines=use_fld_lines
     )
     return dxf_bytes
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  🆕 v7.1 신규 헬퍼 — 빠른 미리보기 / A·B 비교 / 자동 프리셋 회전
+#  (기존 함수·변수·UI 전혀 변경 없음. 추가 전용.)
+# ══════════════════════════════════════════════════════════════════════
+
+def _crop_center_region(img_bytes, max_side=400):
+    """이미지 중앙의 정사각 영역(최대 max_side px)만 잘라 bytes로 반환.
+    빠른 미리보기(2번)·A/B 비교(5번)에서 변환 부담을 줄이기 위해 사용.
+    실패 시 원본 bytes를 그대로 반환(안전 fallback)."""
+    try:
+        arr = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is None:
+            return img_bytes, False
+        h, w = img.shape[:2]
+        side = int(min(max_side, w, h))
+        if side <= 0:
+            return img_bytes, False
+        cx, cy = w // 2, h // 2
+        x0 = max(0, cx - side // 2)
+        y0 = max(0, cy - side // 2)
+        x1 = min(w, x0 + side)
+        y1 = min(h, y0 + side)
+        crop = img[y0:y1, x0:x1]
+        ok, buf = cv2.imencode(".png", crop)
+        if not ok:
+            return img_bytes, False
+        return buf.tobytes(), True
+    except Exception:
+        return img_bytes, False
+
+
+def _quick_region_preview(img_bytes, conv_kwargs, max_side=400):
+    """중앙 영역만 잘라 현재 설정으로 변환 → (dxf_bytes, report, used_crop).
+    conv_kwargs 는 변환 버튼에서 쓰는 _conv_kwargs 와 동일한 dict.
+    실패 시 (None, None, used_crop)."""
+    region_bytes, used_crop = _crop_center_region(img_bytes, max_side=max_side)
+    try:
+        _kw = dict(conv_kwargs)
+        # 빠른 미리보기에서는 OCR을 강제로 꺼서 속도 확보 (DXF 품질엔 영향 없음)
+        _kw["use_ocr"] = False
+        d_bytes, rpt = convert_to_dxf_bytes(region_bytes, **_kw)
+        return d_bytes, rpt, used_crop
+    except Exception:
+        return None, None, used_crop
+
+
+def _score_settings(img_bytes, conv_kwargs, max_side=520):
+    """주어진 설정으로 (중앙 영역) 변환 후 품질 점수를 매겨 dict로 반환.
+    A/B 비교(5번)에서 사용. 실패 시 None.
+    반환: {"dxf": bytes, "report": dict, "score": int, "grade": str,
+           "lines": int, "circles": int}"""
+    region_bytes, _ = _crop_center_region(img_bytes, max_side=max_side)
+    try:
+        _kw = dict(conv_kwargs)
+        _kw["use_ocr"] = False
+        d_bytes, rpt = convert_to_dxf_bytes(region_bytes, **_kw)
+        # report 안에 이미 quality_score 가 있으면 그대로, 없으면 계산
+        _score = rpt.get("quality_score", None)
+        _grade = rpt.get("quality_grade", None)
+        if _score is None or _grade is None:
+            try:
+                _q = calculate_quality_score(rpt)
+                _score = _q.get("score", 0)
+                _grade = _q.get("grade", "-")
+            except Exception:
+                _score, _grade = 0, "-"
+        return {
+            "dxf": d_bytes, "report": rpt,
+            "score": int(_score), "grade": str(_grade),
+            "lines": int(rpt.get("lines", 0)),
+            "circles": int(rpt.get("circles", 0)),
+        }
+    except Exception:
+        return None
+
+
+def save_auto_history_preset(user_id, image_type, settings_dict,
+                             keep=10, prefix="__auto_"):
+    """변환 성공 직후 현재 설정을 '자동 이력 프리셋'으로 저장(4번).
+    - 이름: __auto_YYYYMMDD_HHMMSS  (prefix 로 사용자 프리셋과 구분)
+    - 같은 user_id의 __auto_ 프리셋이 keep 개를 넘으면 가장 오래된 것부터 자동 삭제(회전).
+    기존 save_user_preset / user_presets 테이블을 그대로 재사용한다.
+    실패해도 변환 흐름에 영향 없도록 조용히 무시."""
+    if not user_id or not isinstance(settings_dict, dict) or not settings_dict:
+        return
+    try:
+        _stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        _name = f"{prefix}{_stamp}"
+        save_user_preset(user_id, _name, image_type, settings_dict)
+        # 회전: __auto_ 프리셋만 골라 최신 keep개만 남기고 삭제
+        with _db() as c:
+            rows = c.execute(
+                "SELECT preset_name FROM user_presets "
+                "WHERE user_id=? AND preset_name LIKE ? "
+                "ORDER BY updated_at DESC",
+                (user_id, prefix + "%")
+            ).fetchall()
+        _old = [r[0] for r in rows[keep:]]
+        for _pn in _old:
+            try:
+                delete_user_preset(user_id, _pn)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def load_auto_history_presets(user_id, prefix="__auto_", limit=10):
+    """자동 이력 프리셋만 최신순으로 조회(4번 복원 버튼용).
+    반환: list of {"name", "image_type", "settings", "updated_at", "label"}"""
+    if not user_id:
+        return []
+    try:
+        _all = load_user_presets(user_id)
+    except Exception:
+        return []
+    _out = []
+    for p in _all:
+        if not str(p.get("name", "")).startswith(prefix):
+            continue
+        # 표시용 라벨: __auto_20260601_143052 → 06/01 14:30
+        _raw = p["name"][len(prefix):]
+        _label = _raw
+        try:
+            _dt = datetime.datetime.strptime(_raw, "%Y%m%d_%H%M%S")
+            _label = _dt.strftime("%m/%d %H:%M")
+        except Exception:
+            pass
+        _out.append({
+            "name": p["name"],
+            "image_type": p.get("image_type", ""),
+            "settings": p.get("settings", {}),
+            "updated_at": p.get("updated_at", ""),
+            "label": _label,
+        })
+        if len(_out) >= limit:
+            break
+    return _out
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  🆕 v7.2: 외곽선 자동완성 후처리 (ezdxf edgeminer / edgesmith 기반)
+#  - 끊어진 LINE/ARC 조각들을 모아 '닫힌 고리(loop)'를 찾아
+#    새 레이어(OUTLINE_CLOSED)에 닫힌 폴리라인으로 추가한다.
+#  - 원본 엔티티는 절대 삭제하지 않음(보존) → 완전 안전, 실패해도 원본 그대로 반환.
+#  - convert_to_dxf_bytes 의 50개 파라미터 시그니처를 건드리지 않기 위해,
+#    '완성된 DXF bytes'를 입력받아 후처리하는 독립 함수로 구현.
+# ══════════════════════════════════════════════════════════════════════
+
+# edgeminer/edgesmith 는 ezdxf 1.1+ 에 포함. 없으면 조용히 기능 비활성화.
+try:
+    from ezdxf import edgeminer as _edgeminer
+    from ezdxf import edgesmith as _edgesmith
+    _EDGE_TOOLS_AVAILABLE = True
+except Exception:
+    _EDGE_TOOLS_AVAILABLE = False
+
+
+def close_open_outlines_dxf(dxf_bytes, gap_tol=0.5, min_edges=3,
+                            closed_layer="OUTLINE_CLOSED"):
+    """완성된 DXF(bytes)에서 끊어진 외곽선을 찾아 닫힌 폴리라인으로 보강.
+
+    Parameters
+    ----------
+    dxf_bytes : bytes
+        convert_to_dxf_bytes 가 만든 DXF 데이터
+    gap_tol : float
+        이 거리(도면 단위) 이내로 떨어진 선 끝점은 '이어진 것'으로 간주.
+        값이 클수록 더 많이 이어 붙임(과하면 엉뚱한 연결 위험).
+    min_edges : int
+        고리를 이루는 최소 선분 수. 작은 노이즈 고리 제외용.
+    closed_layer : str
+        닫힌 폴리라인을 넣을 새 레이어 이름(원본 레이어 안 건드림).
+
+    Returns
+    -------
+    (out_bytes, info)
+        out_bytes : 후처리된 DXF bytes (실패 시 원본 그대로)
+        info : dict {"closed_added": int, "ok": bool, "msg": str}
+    """
+    info = {"closed_added": 0, "ok": False, "msg": ""}
+    if not _EDGE_TOOLS_AVAILABLE:
+        info["msg"] = "ezdxf edgeminer/edgesmith 미지원 버전"
+        return dxf_bytes, info
+    try:
+        from ezdxf.math import Vec2
+        # 1) bytes → ezdxf 문서 로드
+        _txt = dxf_bytes.decode("utf-8", errors="replace")
+        doc = ezdxf.read(io.StringIO(_txt))
+        msp = doc.modelspace()
+
+        # 2) 열린 선형 엔티티(LINE/ARC/열린 POLYLINE 등)만 edge 로 변환
+        #    닫힌 원/폴리라인은 edgesmith 가 알아서 무시.
+        _ents = list(msp.query("LINE ARC LWPOLYLINE POLYLINE ELLIPSE SPLINE"))
+        if len(_ents) < min_edges:
+            info["msg"] = "선분이 너무 적어 건너뜀"
+            return dxf_bytes, info
+
+        edges = list(_edgesmith.edges_from_entities_2d(_ents))
+        if len(edges) < min_edges:
+            info["msg"] = "edge 변환 결과 부족"
+            return dxf_bytes, info
+
+        # 3) gap_tol 로 연결 인덱스 구성 후, '연결된 체인'들을 분리
+        #    (find_all_loops 는 고립 노이즈가 섞이면 전체 실패하므로
+        #     find_all_simple_chains 로 그룹을 먼저 나누는 방식이 견고함)
+        dep = _edgeminer.Deposit(edges, gap_tol=float(gap_tol))
+        try:
+            chains = _edgeminer.find_all_simple_chains(dep)
+        except Exception:
+            chains = []
+
+        added = 0
+        for ch in chains:
+            if len(ch) < min_edges:
+                continue
+            try:
+                _ps = Vec2(ch[0].start)
+                _pe = Vec2(ch[-1].end)
+            except Exception:
+                continue
+            # 체인의 시작점과 끝점이 gap_tol 안이면 '닫힌 외곽선'으로 판정
+            if _ps.distance(_pe) > float(gap_tol):
+                continue
+            try:
+                _lw = _edgesmith.lwpolyline_from_chain(ch)
+                _pts = [(p[0], p[1]) for p in _lw.get_points()]
+                if len(_pts) < 3:
+                    continue
+                msp.add_lwpolyline(
+                    _pts,
+                    dxfattribs={"layer": closed_layer, "closed": True},
+                )
+                added += 1
+            except Exception:
+                continue
+
+        if added == 0:
+            info["msg"] = "닫을 수 있는 외곽선을 찾지 못함"
+            info["ok"] = True   # 에러는 아님 — 그냥 보강할 게 없었음
+            return dxf_bytes, info
+
+        # 4) 닫힌 폴리라인 레이어에 색상 부여(시각 구분용, 있으면 통과)
+        try:
+            if closed_layer not in doc.layers:
+                doc.layers.add(closed_layer, color=3)  # 초록
+        except Exception:
+            pass
+
+        out = io.StringIO()
+        doc.write(out)
+        info["closed_added"] = added
+        info["ok"] = True
+        info["msg"] = f"{added}개 외곽선 폐합"
+        return out.getvalue().encode("utf-8"), info
+    except Exception as e:
+        info["msg"] = f"후처리 실패(원본 유지): {str(e)[:80]}"
+        return dxf_bytes, info
+
+
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ⚡ v7.0 신규: 배치 병렬 변환 (ProcessPoolExecutor)
+# ══════════════════════════════════════════════════════════════════
+#  설계 원칙
+#   • CPU 바운드인 DXF 계산(convert_to_dxf_bytes) + 외곽선 후처리만 병렬화.
+#   • DWG(ODA)·ZIP·통계는 메인 프로세스에서 순차 처리 (외부 exe 충돌 방지).
+#   • OCR 사용 시에는 모델을 프로세스마다 새로 로드하면 오히려 느려지므로
+#     자동으로 순차 모드로 폴백한다.
+#   • 워커는 전역 Streamlit 상태(st.session_state 등)에 의존하지 않는다.
+#     필요한 모든 값은 인자(dict)로 전달받는다.
+# ──────────────────────────────────────────────────────────────────
+import concurrent.futures as _futures
+
+# 병렬 사용 가능한 CPU 코어 수 (메인 작업용으로 1개는 남겨둠)
+try:
+    _CPU_COUNT = os.cpu_count() or 2
+except Exception:
+    _CPU_COUNT = 2
+_MAX_WORKERS_DEFAULT = max(1, min(_CPU_COUNT - 1, 6))  # 과도한 메모리 사용 방지 상한 6
+
+
+# ══════════════════════════════════════════════════════════════════
+#  🔍 v7.0 신규: CAD QA 자동 검수 (ezdxf 기반, 추가 설치 없음)
+# ══════════════════════════════════════════════════════════════════
+#  변환된 DXF 바이트를 받아 5가지 품질 문제를 자동으로 검사한다.
+#  검사 항목:
+#   1. 미폐합 폴리라인  — 닫혀야 할 외곽선이 열린 상태
+#   2. 중복선           — 동일 위치에 선이 2개 이상 겹침
+#   3. 0길이 선         — 길이가 0인 쓸모없는 엔티티
+#   4. 레이어 오류      — 빈 레이어명 또는 허용 외 레이어
+#   5. 텍스트 누락      — MTEXT/TEXT 엔티티가 하나도 없는 경우
+# ──────────────────────────────────────────────────────────────────
+def run_dxf_qa(dxf_bytes, ocr_was_on=False, expected_layers=None):
+    """DXF 바이트를 분석해 QA 결과 dict를 반환한다.
+
+    Parameters
+    ----------
+    dxf_bytes : bytes
+        convert_to_dxf_bytes 가 생성한 DXF 데이터.
+    ocr_was_on : bool
+        OCR을 켜고 변환했는지 여부 (텍스트 누락 판정에 사용).
+    expected_layers : list[str] | None
+        허용하는 레이어명 목록. None 이면 레이어 오류 검사 생략.
+
+    Returns
+    -------
+    dict
+        {
+          "open_polylines":  int,   # 미폐합 폴리라인 수
+          "duplicate_lines": int,   # 중복선 수
+          "zero_len_lines":  int,   # 0길이 선 수
+          "layer_errors":    int,   # 레이어 오류 수
+          "text_missing":    bool,  # 텍스트 누락 여부
+          "total_issues":    int,   # 전체 문제 수
+          "qa_score":        int,   # 100점 만점 QA 점수
+          "ok":              bool,  # True = 문제 없음
+          "error":           str,   # 실패 시 오류 메시지
+        }
+    """
+    result = {
+        "open_polylines":  0,
+        "duplicate_lines": 0,
+        "zero_len_lines":  0,
+        "layer_errors":    0,
+        "text_missing":    False,
+        "total_issues":    0,
+        "qa_score":        100,
+        "ok":              True,
+        "error":           "",
+    }
+    try:
+        import io as _io
+        doc = ezdxf.read(_io.StringIO(dxf_bytes.decode("utf-8", errors="replace")))
+        msp = doc.modelspace()
+
+        _seen_lines = {}   # 중복선 감지용 {(x1,y1,x2,y2): count}
+        _text_count = 0
+
+        for e in msp:
+            etype = e.dxftype()
+
+            # ── 1. 미폐합 폴리라인 ──────────────────────────────
+            if etype in ("LWPOLYLINE", "POLYLINE"):
+                try:
+                    is_closed = e.is_closed if hasattr(e, "is_closed") else e.dxf.get("flags", 0) & 1
+                    if not is_closed:
+                        # 시작-끝 좌표가 매우 가까우면(3단위 이내) 사실상 폐합으로 간주
+                        pts = list(e.get_points()) if hasattr(e, "get_points") else []
+                        if len(pts) >= 2:
+                            p0, p1 = pts[0], pts[-1]
+                            dist = ((p0[0]-p1[0])**2 + (p0[1]-p1[1])**2) ** 0.5
+                            if dist > 3.0:
+                                result["open_polylines"] += 1
+                except Exception:
+                    pass
+
+            # ── 2. 중복선 + 3. 0길이 선 ────────────────────────
+            elif etype == "LINE":
+                try:
+                    x1 = round(float(e.dxf.start.x), 2)
+                    y1 = round(float(e.dxf.start.y), 2)
+                    x2 = round(float(e.dxf.end.x),   2)
+                    y2 = round(float(e.dxf.end.y),   2)
+                    # 0길이 선
+                    if x1 == x2 and y1 == y2:
+                        result["zero_len_lines"] += 1
+                    else:
+                        # 방향 정규화 (A→B 와 B→A 동일 취급)
+                        key = (min(x1,x2), min(y1,y2), max(x1,x2), max(y1,y2))
+                        _seen_lines[key] = _seen_lines.get(key, 0) + 1
+                except Exception:
+                    pass
+
+            # ── 4. 레이어 오류 ──────────────────────────────────
+            if expected_layers:
+                try:
+                    lyr = e.dxf.get("layer", "")
+                    if not lyr or lyr not in expected_layers:
+                        result["layer_errors"] += 1
+                except Exception:
+                    pass
+
+            # ── 5. 텍스트 집계 ──────────────────────────────────
+            if etype in ("TEXT", "MTEXT"):
+                _text_count += 1
+
+        # 중복선: 2회 이상 등장한 키만 카운트
+        result["duplicate_lines"] = sum(1 for v in _seen_lines.values() if v >= 2)
+
+        # 텍스트 누락: OCR 켰는데 텍스트가 0개면 누락으로 판정
+        if ocr_was_on and _text_count == 0:
+            result["text_missing"] = True
+
+        # ── QA 점수 계산 (100점 만점) ───────────────────────────
+        # 미폐합·중복·0길이는 개수에 비례 감점, 텍스트 누락은 -10점 고정
+        _deduct = 0
+        _deduct += min(result["open_polylines"]  * 3, 30)   # 최대 -30
+        _deduct += min(result["duplicate_lines"] * 2, 20)   # 최대 -20
+        _deduct += min(result["zero_len_lines"]  * 1, 15)   # 최대 -15
+        _deduct += min(result["layer_errors"]    * 1, 15)   # 최대 -15
+        _deduct += 10 if result["text_missing"] else 0      # 고정 -10
+        result["qa_score"] = max(0, 100 - _deduct)
+
+        _total = (result["open_polylines"] + result["duplicate_lines"] +
+                  result["zero_len_lines"] + result["layer_errors"] +
+                  (1 if result["text_missing"] else 0))
+        result["total_issues"] = _total
+        result["ok"] = (_total == 0)
+
+    except Exception as e:
+        result["error"] = str(e)[:120]
+
+    return result
+
+
+# ══════════════════════════════════════════════════════════════════
+#  🆕 v7.3 신규 헬퍼 — 설정 변경 감지 서명 / 일괄 재변환 kwargs 갱신
+#  (기존 함수·변수·UI 전혀 변경 없음. 추가 전용.)
+# ══════════════════════════════════════════════════════════════════
+
+_V73_SIG_KEYS = (
+    "image_type", "layer_name", "USER_SCALE",
+    "use_ocr", "use_enhance", "use_normalize",
+    "THRESHOLD_VAL", "STRAIGHT_TOL", "SIMPLIFY_EPS", "SPLINE_DENSITY",
+    "SMOOTH_WINDOW", "EPSILON", "SHARPEN_STR", "DEDUP_DIST",
+    "USE_SUPER_RESOLUTION", "SR_THRESHOLD_PX",
+    "USE_HOUGH", "CIRCLE_SENS", "CIRCLE_MIN_R", "CIRCLE_MAX_R", "MAX_CIRCLES",
+    "USE_PATTERN", "USE_SPLINE", "USE_GEOMETRY_FITTING",
+    "USE_LINE_FIT", "LINE_RMS_THRESH",
+    "USE_ANGLE_SNAP", "SNAP_TOL_DEG",
+    "USE_HOUGH_LINES", "HOUGH_MIN_LEN", "HOUGH_MAX_GAP", "HOUGH_THRESH",
+    "MIN_PATH_LEN", "STITCH_GAP", "NORMALIZE_THICKNESS",
+    "USE_SPUR_PRUNE", "SPUR_MAX_LEN",
+    "USE_CORNER_ANCHOR", "CORNER_ANGLE_DEG",
+    "USE_DIR_STITCH", "DIR_STITCH_THRESH",
+    "USE_DESKEW", "USE_SPECKLE", "MIN_SPECKLE_AREA",
+    "USE_GAP_BRIDGE", "GAP_BRIDGE_SIZE",
+    "USE_DASH_DETECT", "USE_LAYER_SPLIT", "USE_HATCH_DETECT",
+    "USE_AUTO_CLEANUP", "CLEANUP_LEVEL",
+    "USE_CLOSE_OUTLINE", "CLOSE_OUTLINE_GAP",
+    "USE_CROP",
+    "USE_FAST_THINNING", "USE_FLD_LINES",
+)
+
+def _conv_settings_signature():
+    """🆕 v7.3: 현재 사이드바 설정의 비교용 서명 문자열.
+
+    결과 화면에서 '변환 당시 설정과 달라졌는지' 안내 배지에만 사용한다.
+    모듈 최상위 변수들을 읽기만 하므로 기존 로직에 영향이 없고,
+    어떤 변수가 미정의여도 None으로 처리되어 예외가 발생하지 않는다.
+    """
+    try:
+        g = globals()
+        return "|".join(f"{k}={g.get(k)!r}" for k in _V73_SIG_KEYS)
+    except Exception:
+        return ""
+
+def _v73_refresh_kwargs_from_state(saved_kwargs, ss):
+    """🆕 v7.3: 보관된 conv_kwargs를 현재 사이드바(session_state) 값으로 갱신한 사본 반환.
+
+    v6.2 단일 재변환의 키 매핑과 동일 규칙 — QA 문제 파일 '일괄 재변환' 전용 헬퍼.
+    반환: (갱신된 kwargs dict, 변경된 키 개수)
+    """
+    _new = dict(saved_kwargs)
+    _key_map = {
+        "sl_threshold":           "t_val",
+        "sl_straight":            "s_tol",
+        "sl_eps":                 "s_eps",
+        "sl_spline":              "s_den",
+        "sl_smooth":              "s_win",
+        "sl_epsilon":             "epsilon",
+        "sl_sharpen":             "sharpen_strength",
+        "sl_dedup":               "dedup_dist",
+        "sl_normalize_thickness": "normalize_thickness",
+        "v6_min_speckle":         "min_speckle_area",
+        "v6_gap_size":            "gap_bridge_size",
+        "v6_line_rms":            "line_rms_thresh",
+        "v6_hough_min":           "hough_min_len",
+        "v6_hough_gap":           "hough_max_gap",
+        "v6_hough_thr":           "hough_thresh",
+        "v6_snap_tol":            "snap_tol_deg",
+        "v6_min_path_len":        "min_path_len",
+        "v6_stitch_gap":          "stitch_gap",
+        # 토글
+        "opt_use_ocr":            "use_ocr",
+        "opt_use_enhance":        "use_enhance",
+        "opt_use_normalize":      "use_normalize",
+        "v6_use_deskew":          "use_deskew",
+        "v6_use_speckle":         "use_speckle",
+        "v6_use_gap_bridge":      "use_gap_bridge",
+        "v6_use_spline":          "use_spline",
+        "v6_use_line_fit":        "use_line_fit",
+        "v6_use_hough_lines":     "use_hough_lines",
+        "v6_use_angle_snap":      "use_angle_snap",
+        "v6_use_dash_detect":     "use_dash_detect",
+        "v6_use_layer_split":     "use_layer_split",
+        "v6_use_hatch_detect":    "use_hatch_detect",
+        "v61_use_auto_cleanup":   "use_auto_cleanup",
+        # 🆕 v6.3
+        "v63_use_sr":             "use_super_resolution",
+        "v63_sr_threshold":       "sr_threshold_px",
+        # 🆕 v7.3
+        "v73_use_fast_thinning":  "use_fast_thinning",
+        "v73_use_fld":            "use_fld_lines",
+    }
+    changed = 0
+    for _sk, _kk in _key_map.items():
+        if _sk in ss and _new.get(_kk) != ss[_sk]:
+            _new[_kk] = ss[_sk]
+            changed += 1
+    if "v61_cleanup_level_label" in ss:
+        _cl = {"🟢 약함 (보수적)": "light", "🔵 표준 (권장)": "standard",
+               "🟠 강함 (적극적)": "strong"}.get(ss["v61_cleanup_level_label"], "standard")
+        if _new.get("cleanup_level") != _cl:
+            _new["cleanup_level"] = _cl
+            changed += 1
+    return _new, changed
+
+
+def _convert_one_worker(task):
+    """단일 파일을 DXF로 변환하는 독립 워커 (별도 프로세스에서 실행 가능).
+
+    Parameters
+    ----------
+    task : dict
+        {
+          "index":        int,           # 원래 파일 순서 (결과 정렬용)
+          "name":         str,           # 원본 파일명
+          "img_bytes":    bytes,         # (crop은 메인에서 이미 적용된 상태)
+          "conv_kwargs":  dict,          # convert_to_dxf_bytes 인자
+          "use_close":    bool,          # 외곽선 자동완성 후처리 여부
+          "close_gap":    float,         # 외곽선 폐합 허용 간격
+        }
+
+    Returns
+    -------
+    dict
+        성공: {"index","name","ok":True,"d_bytes","report"}
+        실패: {"index","name","ok":False,"error"}
+
+    주의: 이 함수는 picklable 해야 하므로 모듈 최상위에 정의되어 있으며,
+          st.* 호출을 일절 하지 않는다. (OCR이 켜진 task는 메인에서 순차
+          처리되므로 워커 내부에서 load_ocr_model 캐시 충돌이 발생하지 않는다.)
+    """
+    try:
+        img_bytes = task["img_bytes"]
+        d_bytes, rpt = convert_to_dxf_bytes(img_bytes, **task["conv_kwargs"])
+
+        # 외곽선 자동완성 후처리 (토글 ON 일 때만, 실패해도 원본 유지)
+        if task.get("use_close"):
+            try:
+                d_bytes, _close_info = close_open_outlines_dxf(
+                    d_bytes,
+                    gap_tol=float(task.get("close_gap", 0.5)),
+                    min_edges=3,
+                )
+                if _close_info.get("closed_added", 0) > 0:
+                    rpt.setdefault("warnings", []).append(
+                        f"🔗 외곽선 자동완성: {_close_info['closed_added']}개 폐합"
+                    )
+            except Exception:
+                pass
+
+        return {
+            "index":   task["index"],
+            "name":    task["name"],
+            "ok":      True,
+            "d_bytes": d_bytes,
+            "report":  rpt,
+            # 🔍 v7.0: QA 검수 결과 (워커 내부에서 바로 실행)
+            "qa":      run_dxf_qa(
+                           d_bytes,
+                           ocr_was_on=task["conv_kwargs"].get("use_ocr", False),
+                       ),
+        }
+    except Exception as e:
+        return {
+            "index": task["index"],
+            "name":  task["name"],
+            "ok":    False,
+            "error": str(e),
+        }
+
+
+def run_batch_dxf(tasks, use_parallel, max_workers=None, progress_cb=None):
+    """여러 파일의 DXF 변환을 (가능하면) 병렬로 실행한다.
+
+    Parameters
+    ----------
+    tasks : list[dict]
+        _convert_one_worker 가 받는 task dict 들의 리스트.
+    use_parallel : bool
+        True 면 ProcessPoolExecutor 사용, False 면 순차 실행.
+        (OCR 사용 시 호출부에서 False 로 넘긴다.)
+    max_workers : int | None
+        병렬 워커 수. None 이면 자동(_MAX_WORKERS_DEFAULT).
+    progress_cb : callable(done_count, total, last_result) | None
+        파일 1개가 끝날 때마다 호출되는 진행률 콜백. 결과 1건을 넘긴다.
+
+    Returns
+    -------
+    list[dict]
+        _convert_one_worker 결과들. 입력 순서(index)대로 정렬되어 반환.
+    """
+    total = len(tasks)
+    results = [None] * total
+
+    # ── 순차 모드 (OCR ON 또는 파일 1개 또는 코어 1개) ──────────────
+    if (not use_parallel) or total <= 1 or _MAX_WORKERS_DEFAULT <= 1:
+        for done, task in enumerate(tasks, start=1):
+            r = _convert_one_worker(task)
+            results[r["index"]] = r
+            if progress_cb:
+                progress_cb(done, total, r)
+        return results
+
+    # ── 병렬 모드 (OCR OFF) ────────────────────────────────────────
+    workers = max_workers or _MAX_WORKERS_DEFAULT
+    workers = max(1, min(workers, total))
+    done = 0
+    try:
+        with _futures.ProcessPoolExecutor(max_workers=workers) as ex:
+            future_map = {ex.submit(_convert_one_worker, t): t["index"] for t in tasks}
+            for fut in _futures.as_completed(future_map):
+                r = fut.result()
+                results[r["index"]] = r
+                done += 1
+                if progress_cb:
+                    progress_cb(done, total, r)
+    except Exception:
+        # 병렬 실행 자체가 실패하면(예: 환경 제약) 순차로 안전 폴백
+        results = [None] * total
+        for done, task in enumerate(tasks, start=1):
+            r = _convert_one_worker(task)
+            results[r["index"]] = r
+            if progress_cb:
+                progress_cb(done, total, r)
+    return results
 
 
 # ══════════════════════════════════════════
@@ -4558,7 +5991,57 @@ def convert_for_preview(img_bytes, layer_name, image_type, use_ocr,
 init_stats_db()
 _uid = get_or_create_user_id()
 st.session_state["user_id"] = _uid  # ⭐ v6.2: 사용자 프리셋 저장에 사용
-if not st.session_state.get("_visit_recorded", False):
+
+# ══════════════════════════════════════════════════════════════════
+#  🆕 v7.2  컴퓨터(브라우저) 도장 발급 + 작업자 이름 자동 적용
+# ══════════════════════════════════════════════════════════════════
+#  목적: 직원마다 자기 PC에서 한 번만 이름을 적으면, 그 PC로 접속할 때마다
+#        이름을 다시 안 적어도 자동으로 그 이름이 적용되도록 한다.
+#  방법: 이름이 아니라 '브라우저 고유 도장(dev_id)'을 신원 기준으로 쓴다.
+#        도장은 그 브라우저의 localStorage에만 저장되므로, 주소를 공유해도
+#        다른 사람에게 따라가지 않는다(=신원 안 섞임). 클라우드에서도 안전.
+#
+#  _uid 가 "tmp-" 로 시작 = 아직 이 브라우저에 도장이 URL로 안 들어온 상태
+#    → 아래 JS가 localStorage를 확인해서:
+#        · 도장이 있으면  → ?dev=<도장> 을 붙이고 새로고침(1회)
+#        · 도장이 없으면  → 새 도장을 만들어 저장 후 ?dev=<도장> 으로 새로고침(1회)
+_dev_is_ready = not str(_uid).startswith("tmp-")
+
+if not _dev_is_ready:
+    # 아직 도장이 URL에 없음 → JS로 발급/주입 후 새로고침 (사용자는 한 번 깜빡임만 느낌)
+    components.html("""
+    <script>
+    (function () {
+        try {
+            var KEY = "dxf_device_id";          // 이 브라우저의 도장 보관 키
+            var store = window.localStorage;
+            var dev = store.getItem(KEY);
+            if (!dev) {
+                // 새 도장 발급: 시간+난수 12자리 (의미 없는 식별자)
+                dev = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+                store.setItem(KEY, dev);
+            }
+            var top = window.parent;            // 실제 페이지(부모 창)
+            var url = new URL(top.location.href);
+            if (url.searchParams.get("dev") !== dev) {
+                url.searchParams.set("dev", dev);
+                top.location.replace(url.toString());  // ?dev=<도장> 붙여 1회 새로고침
+            }
+        } catch (e) { /* localStorage 차단 등 예외 시: 임시 id로 그냥 진행 */ }
+    })();
+    </script>
+    """, height=0)
+else:
+    # ✅ 도장이 정상으로 잡힘 → 이 도장에 연결된 이름을 DB에서 자동으로 불러와 적용
+    #    (한 번 입력해 둔 PC라면, 여기서 이름이 자동으로 채워져 재입력이 필요 없음)
+    if not (st.session_state.get("worker_name") or "").strip():
+        _auto_name = load_worker_name(_uid)
+        if _auto_name:
+            st.session_state["worker_name"] = _auto_name
+
+if _dev_is_ready and not st.session_state.get("_visit_recorded", False):
+    # 🆕 v7.2: 임시 id(tmp-)일 때는 방문 집계를 남기지 않음(중복/노이즈 방지).
+    #          도장이 확정된 정상 접속만 '오늘 접속'에 1회 기록.
     record_visit(_uid)
     st.session_state["_visit_recorded"] = True
 _stats = get_stats()
@@ -4592,16 +6075,66 @@ with st.sidebar:
     # ── DXF 변환 옵션 헤더 ──
     st.markdown("""
     <div class="sb-compact-header" style="margin-top:-16px !important;">
-        <div class="sb-title">📐 DXF 변환 옵션</div>
-        <div class="sb-subtitle">★ 웹배포본 · CLEAN-FILENAME · v6.9</div>
+        <div class="sb-title">📐 DWG 변환 옵션</div>
+        <div class="sb-subtitle">★ CAD QA · 병렬 변환 · v7.0</div>
     </div>
     """, unsafe_allow_html=True)
+
+    # ✅ 이름 미입력 시 사이드바 상단에 눈에 띄는 안내
+    _sb_cur_name = (st.session_state.get("worker_name") or "").strip()
+    if not _sb_cur_name:
+        st.markdown(
+            "<div style='background:#fff3cd;border:1px solid #ffc107;border-radius:8px;"
+            "padding:10px 12px;margin-bottom:8px;font-size:0.85rem;color:#856404;'>"
+            "⚠️ <b>작업자 이름이 등록되지 않았습니다</b><br>"
+            "<span style='font-size:0.78rem;'>변환 버튼 위 '작업자 이름' 칸에 입력하세요 (자동 저장)</span>"
+            "</div>",
+            unsafe_allow_html=True
+        )
 
     # ══════════════════════════════════════
     # 🌟 v4.2: 변환이력 (사이드바 최상단)
     # ══════════════════════════════════════
-    with st.expander("📜 변환 이력 (최근 15건)", expanded=False):
-        _sb_history = get_recent_conversions(_uid, limit=15)
+    # ✅ 전체 보기 여부 (이 컴퓨터의 모든 작업자 이력)
+    _hist_all = st.session_state.get("hist_show_all", False)
+    _hist_limit = 50
+    _sb_history = get_recent_conversions(_uid, limit=_hist_limit, all_users=_hist_all)
+    _hist_cnt = len(_sb_history)
+    _scope_txt = "전체" if _hist_all else "내"
+    _hist_title = f"📜 변환 이력 ({_scope_txt} {_hist_cnt}건)" if _hist_cnt > 0 else "📜 변환 이력 (기록 없음)"
+    with st.expander(_hist_title, expanded=False):
+        # ✅ [v7.2] 이름 불러오기: 세션 → 이 PC 도장에 저장된 DB 이름
+        #    (URL ?wname= 의존 제거 — 도장 기반이라 주소에 이름이 안 들어감)
+        _saved_worker = (st.session_state.get("worker_name") or "").strip()
+        if not _saved_worker:
+            _saved_worker = load_worker_name(_uid)
+            if _saved_worker:
+                st.session_state["worker_name"] = _saved_worker
+        # ✅ 입력칸은 메인 화면(변환 버튼 위)으로 이동됨 — 여기선 현재 작업자만 표시
+        if _saved_worker:
+            st.markdown(
+                f"<div style='font-size:0.8rem;color:#1a3a5c;padding:4px 0 8px;'>"
+                f"👤 현재 작업자: <b>{_saved_worker}</b></div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                "<div style='font-size:0.76rem;color:#7a8fa6;padding:4px 0 8px;'>"
+                "👤 작업자 이름은 변환 버튼 위 [📝 이름 입력]에서 등록하세요</div>",
+                unsafe_allow_html=True
+            )
+
+        # ✅ 전체 보기 토글
+        _new_all = st.checkbox(
+            "🌐 전체 작업자 이력 보기",
+            value=_hist_all,
+            key="hist_show_all_cb",
+            help="끄면 내 이력만, 켜면 이 컴퓨터에서 작업한 모든 사람의 이력을 봅니다."
+        )
+        if _new_all != _hist_all:
+            st.session_state["hist_show_all"] = _new_all
+            st.rerun()
+
         if not _sb_history:
             st.markdown("<div style='font-size:0.78rem;color:#7a8fa6;text-align:center;padding:10px 0;'>아직 변환 이력이 없습니다.</div>", unsafe_allow_html=True)
         else:
@@ -4611,22 +6144,83 @@ with st.sidebar:
                 _sbd = _sbh["date"][5:] if len(_sbh["date"]) >= 10 else _sbh["date"]
                 _sbft = f"{_sbd} {_sbt}"
                 _sbts = _sbh["type"].replace("기계도면 - ","").replace("일반 이미지","일반").replace("(","").replace(")","")
-                if len(_sbts) > 18: _sbts = _sbts[:18] + "…"
+                if len(_sbts) > 14: _sbts = _sbts[:14] + "…"
                 _sbic = "✅" if _sbh["success"] else "❌"
+                _sbw = (_sbh.get("worker") or "").strip()
+                if len(_sbw) > 8: _sbw = _sbw[:8] + "…"
+                _sbw_html = f"<span class='history-worker'>{_sbw}</span>" if _sbw else ""
                 _sb_rows += (
                     f"<div class='history-row'>"
                     f"<span style='font-size:0.85rem'>{_sbic}</span>"
                     f"<span class='history-time'>{_sbft}</span>"
+                    f"{_sbw_html}"
                     f"<span class='history-mode'>{_sbts}</span>"
                     f"<span class='history-count'>{_sbh['count']}건</span>"
                     f"</div>"
                 )
             st.markdown(_sb_rows, unsafe_allow_html=True)
 
+        # 🆕 v7.1 [4번]: 지난 변환 설정 복원 — 자동 이력 프리셋에서 골라 사이드바 값 되돌리기
+        try:
+            _auto_presets = load_auto_history_presets(_uid, limit=10)
+        except Exception:
+            _auto_presets = []
+        if _auto_presets:
+            st.markdown(
+                "<div style='font-size:0.74rem;color:#1a3a5c;font-weight:600;"
+                "margin:10px 0 4px;border-top:1px dashed #d0d7e0;padding-top:8px;'>"
+                "↩️ 지난 변환 설정 복원</div>",
+                unsafe_allow_html=True
+            )
+            # 라벨(시각) → 프리셋 dict 매핑
+            _ap_options = [f"{p['label']} · {p['image_type'].replace('기계도면 - ','').replace('일반 이미지','일반')[:12]}" for p in _auto_presets]
+            _ap_sel = st.selectbox(
+                "복원할 시점 선택",
+                range(len(_auto_presets)),
+                format_func=lambda i: _ap_options[i],
+                key="v_restore_sel",
+                label_visibility="collapsed",
+                help="변환에 성공할 때마다 그때 설정이 자동 저장됩니다. 잘 나왔던 시점을 골라 사이드바 값을 그대로 되돌립니다.",
+            )
+
+            def _restore_settings_callback(_presets=_auto_presets):
+                """선택한 자동 프리셋 설정을 session_state에 적용 (슬라이더 렌더 전 콜백)."""
+                try:
+                    _idx = st.session_state.get("v_restore_sel", 0)
+                    _settings = _presets[_idx].get("settings", {})
+                    _n = apply_user_preset(st.session_state, _settings)
+                    st.session_state["v_restore_count"] = _n
+                except Exception:
+                    st.session_state["v_restore_count"] = 0
+
+            st.button(
+                "↩️ 이 설정으로 되돌리기",
+                use_container_width=True,
+                key="v_restore_btn",
+                on_click=_restore_settings_callback,
+                help="선택한 시점의 슬라이더·옵션 값을 사이드바에 그대로 복원합니다.",
+            )
+            _rc = st.session_state.pop("v_restore_count", None)
+            if _rc is not None:
+                if _rc > 0:
+                    st.success(f"✅ {_rc}개 설정을 복원했습니다.")
+                else:
+                    st.info("복원할 설정이 없습니다.")
+
+    # ══════════════════════════════════════════════════════════════
+    # 📊 v7.4: 사용 통계 — 메인 화면에 크게 표시 (사이드바엔 토글 버튼만)
+    # ══════════════════════════════════════════════════════════════
+    _stats_on = st.session_state.get("show_stats_main", False)
+    _stats_btn_label = "📊 통계 화면 닫기" if _stats_on else "📊 사용 통계 보기"
+    if st.button(_stats_btn_label, use_container_width=True, key="toggle_stats_main"):
+        st.session_state["show_stats_main"] = not _stats_on
+        st.rerun()
+    st.caption("변환할 파일이 없을 때 메인 화면에 크게 표시됩니다.")
+
     # ══════════════════════════════════════════════════════════════
     # 🆕 v6.5: DWG/AutoCAD 자동 연동 설정 (사이드바)
     # ══════════════════════════════════════════════════════════════
-    with st.expander("🔧 DWG / AutoCAD 자동 연동 (v6.5 ★)", expanded=False):
+    with st.expander("🔧 DWG / AutoCAD 자동 연동 (v7.0 ★)", expanded=False):
         if not _IS_WINDOWS:
             st.info(
                 "🌐 **웹 배포본 안내**\n\n"
@@ -4879,7 +6473,7 @@ with st.sidebar:
     # ══════════════════════════════════════════════════════════
     # 🆕 v6.4 [UI 개선 ⑥]: 퀵 변환 3단계 버튼 (빠름 / 균형 / 정밀)
     # ══════════════════════════════════════════════════════════
-    st.markdown("<div class='sb-section-label' style='margin-top:8px;'>⚡ 퀵 변환 (v6.4)</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sb-section-label' style='margin-top:8px;'>⚡ 퀵 변환 (v7.0)</div>", unsafe_allow_html=True)
     _q_cols = st.columns(3, gap="small")
     _active_quick = st.session_state.get("v64_active_quick", None)
 
@@ -4952,6 +6546,9 @@ with st.sidebar:
     USE_DASH_DETECT  = False
     USE_LAYER_SPLIT  = False
     USE_HATCH_DETECT = False
+    # 🆕 v7.2: 외곽선 자동완성 기본값 (기계도면 외 도면 종류에선 토글 미노출)
+    USE_CLOSE_OUTLINE = False
+    CLOSE_OUTLINE_GAP = 3.0
     USE_LINE_FIT     = False
     LINE_RMS_THRESH  = 1.5
     USE_HOUGH_LINES  = False
@@ -5080,6 +6677,18 @@ with st.sidebar:
         else:
             GAP_BRIDGE_SIZE = 3
 
+        # 🆕 v7.3: 고속 스켈레톤 (opencv-contrib GUOHALL thinning) — 기본 OFF
+        _v73_ximg_ok = hasattr(cv2, "ximgproc")
+        USE_FAST_THINNING = st.toggle(
+            "🚀 고속 스켈레톤 (GUOHALL thinning)",
+            value=False, key="v73_use_fast_thinning",
+            disabled=not _v73_ximg_ok,
+            help=("뼈대선(스켈레톤) 추출을 C++ 기반 OpenCV GUOHALL thinning으로 수행합니다. "
+                  "기존 방식 대비 3~10배 빠르며, 특히 Super-Resolution으로 커진 큰 이미지에서 효과가 큽니다. "
+                  "결과 선이 기존과 미세하게 다를 수 있으니 🆚 A/B 비교 후 사용을 권장합니다."
+                  + ("" if _v73_ximg_ok else " ⚠️ opencv-contrib-python 미설치로 비활성화됨")),
+        )
+
         # SPLINE 토글 (전체 도면 종류 공통)
         st.markdown("<div style='margin:4px 0'></div>", unsafe_allow_html=True)
         USE_SPLINE = st.toggle("〰️ 곡선 SPLINE 변환", value=False, key="v6_use_spline",
@@ -5168,8 +6777,18 @@ with st.sidebar:
                     HOUGH_THRESH  = st.slider("탐지 엄격도", 20, 200, 50, 5, key="v6_hough_thr")
                 with hc2:
                     HOUGH_MAX_GAP = st.slider("최대 간격(px)", 1, 30, 8, 1, key="v6_hough_gap")
+                # 🆕 v7.3: FLD(FastLineDetector) 엔진 — Hough보다 끊김 적고 파라미터에 둔감
+                USE_FLD_LINES = st.toggle(
+                    "🚀 FLD 엔진으로 직선 추출 (HoughLinesP 대체)",
+                    value=False, key="v73_use_fld",
+                    disabled=not hasattr(cv2, "ximgproc"),
+                    help=("OpenCV FastLineDetector(contrib)로 긴 직선을 추출합니다. "
+                          "HoughLinesP보다 직선 끊김이 적고 '탐지 엄격도/최대 간격' 튜닝 부담이 줄어듭니다. "
+                          "미설치·실패 시 자동으로 HoughLinesP로 폴백됩니다."),
+                )
             else:
                 HOUGH_MIN_LEN = 40; HOUGH_MAX_GAP = 8; HOUGH_THRESH = 50
+                USE_FLD_LINES = False
 
             USE_ANGLE_SNAP = st.toggle("📐 각도 스냅 (0/30/45/60/90도 정렬)", value=False, key="v6_use_angle_snap",
                 help="직선의 각도를 주요 각도로 자동 정렬합니다.")
@@ -5221,6 +6840,19 @@ with st.sidebar:
 
             USE_HATCH_DETECT = st.toggle("▦ 해치 패턴 인식 (Hatch)", value=False, key="v6_use_hatch_detect",
                 help="서로 평행하고 일정 간격인 선 그룹을 해치 패턴으로 인식해 HATCH 레이어에 표시합니다. 단면도 도면에 효과적입니다.")
+
+            # 🆕 v7.2: 외곽선 자동완성 (ezdxf edgeminer) — 끊긴 외곽선을 닫힌 폴리라인으로 보강
+            st.markdown("<hr style='margin:8px 0; border:none; border-top:1px solid #e1e7ef;'>", unsafe_allow_html=True)
+            st.markdown("<div class='sb-group-header accent'>🆕 v7.2 외곽선 자동완성</div>", unsafe_allow_html=True)
+            USE_CLOSE_OUTLINE = st.toggle("🔗 끊긴 외곽선 자동 폐합", value=False, key="v72_use_close_outline",
+                help="변환이 끝난 뒤, 살짝 끊어진 외곽선 조각들을 모아 '닫힌 폴리라인'으로 새 레이어(OUTLINE_CLOSED)에 보강합니다. 원본 선은 그대로 두므로 안전합니다. CAD에서 면(영역) 인식·해치·치수 작업이 쉬워집니다.")
+            if USE_CLOSE_OUTLINE:
+                CLOSE_OUTLINE_GAP = st.slider("폐합 허용 틈 (px)", 0.5, 15.0, 3.0, 0.5, key="v72_close_gap",
+                    help="이 거리 이내로 떨어진 선 끝점은 '이어진 것'으로 보고 닫습니다. 값이 작으면 거의 맞붙은 것만, 크면 더 적극적으로 잇습니다(너무 크면 엉뚱하게 연결될 수 있어요).")
+                if not _EDGE_TOOLS_AVAILABLE:
+                    st.caption("⚠️ 이 기능은 ezdxf 1.1 이상에서 작동합니다. (현재 버전 미지원 시 자동으로 건너뜁니다)")
+            else:
+                CLOSE_OUTLINE_GAP = 3.0
 
     # ── 파라미터 슬라이더 ──
     slider_label = {"기계도면 - 사시도": "⚙️ 사시도 파라미터", "기계도면 - 정면도/단면도": "⚙️ 정면도 파라미터", "깔끔한 디지털 선화": "⚙️ 선화 파라미터", "일반 이미지(간략한 표현,한줄)": "⚙️ 한줄 파라미터", "일반 이미지(풍성한 표현,두줄)": "⚙️ 두줄 파라미터"}.get(image_type, "⚙️ 파라미터")
@@ -5410,6 +7042,9 @@ with st.sidebar:
     USE_LAYER_SPLIT  = st.session_state.get("v6_use_layer_split", USE_LAYER_SPLIT)
     USE_HATCH_DETECT = st.session_state.get("v6_use_hatch_detect",USE_HATCH_DETECT)
     USE_SPLINE       = st.session_state.get("v6_use_spline",      USE_SPLINE)
+    # 🆕 v7.2: 외곽선 자동완성 session_state 읽기
+    USE_CLOSE_OUTLINE = st.session_state.get("v72_use_close_outline", USE_CLOSE_OUTLINE)
+    CLOSE_OUTLINE_GAP = st.session_state.get("v72_close_gap",          CLOSE_OUTLINE_GAP)
     # 🪄 v6.1
     USE_AUTO_CLEANUP = st.session_state.get("v61_use_auto_cleanup", USE_AUTO_CLEANUP)
     _cl_label = st.session_state.get("v61_cleanup_level_label", "🔵 표준 (권장)")
@@ -5539,6 +7174,117 @@ components.html("""
 </script>
 """, height=0)
 
+# ── 사이드바 열고/닫기: 자체 토글 버튼 (v6.9.1 · 버전·캐시 무관 100% 동작) ──
+components.html("""
+<script>
+(function() {
+    var PDOC = window.parent.document;
+    var BTN_ID = 'my-sidebar-toggle-v691';
+    var SIDEBAR = 'section[data-testid="stSidebar"]';
+
+    function getSidebar() { return PDOC.querySelector(SIDEBAR); }
+
+    /* ✅ 접속 즉시 사이드바 강제 열기 — localStorage 우선 적용을 덮어씀 */
+    function forceOpen() {
+        var sb = getSidebar();
+        if (!sb) return false;
+        sb.setAttribute('aria-expanded', 'true');
+        sb.style.setProperty('width',      '420px', 'important');
+        sb.style.setProperty('min-width',  '420px', 'important');
+        sb.style.setProperty('max-width',  '420px', 'important');
+        sb.style.setProperty('transform',  'none',  'important');
+        sb.style.setProperty('margin-left','0',     'important');
+        sb.style.removeProperty('overflow');
+        return true;
+    }
+    /* 사이드바가 DOM에 생길 때까지 짧은 간격으로 시도, 성공하면 중단 */
+    var _fo_tries = 0;
+    var _fo_timer = setInterval(function() {
+        if (forceOpen() || ++_fo_tries > 30) clearInterval(_fo_timer);
+    }, 80);
+
+    function isOpen() {
+        var sb = getSidebar();
+        if (!sb) return false;
+        var aria = sb.getAttribute('aria-expanded');
+        if (aria !== null) return aria === 'true';
+        // aria 없으면 폭으로 판단
+        return sb.getBoundingClientRect().width > 50;
+    }
+
+    function openSidebar() {
+        var sb = getSidebar();
+        if (!sb) return;
+        sb.setAttribute('aria-expanded', 'true');
+        sb.style.setProperty('width', '420px', 'important');
+        sb.style.setProperty('min-width', '420px', 'important');
+        sb.style.setProperty('max-width', '420px', 'important');
+        sb.style.setProperty('transform', 'none', 'important');
+        sb.style.setProperty('margin-left', '0', 'important');
+        sb.style.removeProperty('overflow');
+        // Streamlit 기본 닫기버튼도 한번 눌러 상태 동기화 시도
+        var sbtn = PDOC.querySelector('[data-testid="stSidebarCollapseButton"] button, [data-testid="collapsedControl"]');
+    }
+
+    function closeSidebar() {
+        var sb = getSidebar();
+        if (!sb) return;
+        sb.setAttribute('aria-expanded', 'false');
+        sb.style.setProperty('width', '0', 'important');
+        sb.style.setProperty('min-width', '0', 'important');
+        sb.style.setProperty('max-width', '0', 'important');
+        sb.style.setProperty('margin-left', '0', 'important');
+        sb.style.setProperty('overflow', 'hidden', 'important');
+    }
+
+    function toggleSidebar() {
+        if (isOpen()) closeSidebar(); else openSidebar();
+        setTimeout(updateBtn, 50);
+    }
+
+    function updateBtn() {
+        var btn = PDOC.getElementById(BTN_ID);
+        if (!btn) return;
+        var open = isOpen();
+        // 닫혀있으면 화면 맨 왼쪽, 열려있으면 사이드바 오른쪽 끝(420px)에 붙임
+        btn.style.left = open ? '420px' : '0px';
+        btn.innerHTML = open ? '&#9664;' : '&#9654;';  // ◀ 닫기 / ▶ 열기
+        btn.title = open ? '사이드바 닫기' : '사이드바 열기';
+    }
+
+    function makeBtn() {
+        if (PDOC.getElementById(BTN_ID)) { updateBtn(); return; }
+        var btn = PDOC.createElement('div');
+        btn.id = BTN_ID;
+        btn.style.cssText = [
+            'position:fixed', 'top:50%', 'transform:translateY(-50%)',
+            'width:34px', 'height:90px', 'background:#1a3a5c',
+            'color:#ffffff', 'font-size:18px', 'font-weight:bold',
+            'display:flex', 'align-items:center', 'justify-content:center',
+            'border-radius:0 10px 10px 0', 'cursor:pointer', 'z-index:2147483647',
+            'box-shadow:3px 0 14px rgba(26,58,92,0.55)',
+            'user-select:none', 'transition:background 0.2s, left 0.2s'
+        ].join(';') + ';';
+        btn.onmouseenter = function(){ this.style.background = '#0078d4'; };
+        btn.onmouseleave = function(){ this.style.background = '#1a3a5c'; };
+        btn.onclick = toggleSidebar;
+        PDOC.body.appendChild(btn);
+        updateBtn();
+    }
+
+    // 생성 + 주기적 위치 갱신 (사이드바 상태가 바뀌어도 버튼 위치 따라감)
+    [100, 400, 900, 1600, 3000].forEach(function(t){ setTimeout(makeBtn, t); });
+    setInterval(function(){ makeBtn(); updateBtn(); }, 1500);
+
+    try {
+        new MutationObserver(function(){ setTimeout(updateBtn, 30); })
+        .observe(PDOC.body, { attributes:true, subtree:true,
+            attributeFilter:['aria-expanded','style','class'] });
+    } catch(e) {}
+})();
+</script>
+""", height=0)
+
 
 # ══════════════════════════════════════════
 #  🌐  메인 화면
@@ -5549,8 +7295,8 @@ if not st.session_state.get("conversion_done", False):
 <div class="hero-banner">
     <div class="hero-bg-img"></div>
     <div class="hero-left">
-        <div class="hero-badge">v6.9 · 🏗️ DWG 바로 저장 · 깔끔한 파일명 · UI 단순화</div>
-        <div class="hero-title">📐 이미지 일괄 DWG/DXF 변환 시스템</div>
+        <div class="hero-badge">v7.0 · 🏗️ DWG 바로 저장 · 🔍 CAD QA 검수 · ⚡ 병렬 변환</div>
+        <div class="hero-title">📐 이미지 일괄 DWG 변환 시스템</div>
         <div class="hero-subtitle">🏗️ DWG 바로 저장 · 📐🏗️ 안전망 모드 · 🅰️ AutoCAD 자동 후처리 · ⚡ 퀵 변환 3단계</div>
     </div>
 </div>
@@ -5643,7 +7389,8 @@ if not st.session_state.get("conversion_done", False):
             _has_slider_recs = bool(_slider_rec.get("slider_values"))
 
             if _has_toggle_recs or _has_slider_recs:
-                _btn_cols = st.columns([2, 1, 1], gap="small")
+                # 🆕 v7.1: 버튼 4개 — 추천보기 / 추천적용 / ⚡자동최적변환
+                _btn_cols = st.columns([1.4, 1.1, 1.1, 1.3], gap="small")
                 with _btn_cols[1]:
                     if _has_slider_recs and st.button(
                         "🤖 AI 슬라이더 수치 추천 보기",
@@ -5673,7 +7420,6 @@ if not st.session_state.get("conversion_done", False):
                         "🎯 추천 일괄 적용",
                         use_container_width=True,
                         key="apply_recs_btn",
-                        type="primary",
                         help="ON/OFF 추천 + AI 슬라이더 수치 추천을 모두 자동 적용합니다 (사이드바 값 변경)",
                         on_click=_apply_ai_recs_callback,
                     )
@@ -5681,6 +7427,30 @@ if not st.session_state.get("conversion_done", False):
                     _applied_count = st.session_state.pop("v67_ai_apply_count", None)
                     if _applied_count is not None:
                         st.success(f"✅ 총 {_applied_count}개 추천 설정을 자동 적용했습니다.")
+                with _btn_cols[3]:
+                    # 🆕 v7.1 [1번 기능]: 원클릭 자동 최적 변환
+                    #   추천(토글+슬라이더)을 먼저 적용한 뒤, 자동 변환 플래그를 세워
+                    #   아래 변환 버튼 로직을 그대로 재사용해 바로 변환을 돌린다.
+                    #   (콜백에서 세팅 → rerun 후 run_clicked 와 동일 분기로 처리)
+                    def _auto_optimize_run_callback(
+                        _toggle_dict=_qa.get("auto_options", {}),
+                        _slider_dict=_slider_rec.get("slider_values", {}),
+                    ):
+                        for k, v in _toggle_dict.items():
+                            st.session_state[k] = v
+                        for k, v in _slider_dict.items():
+                            st.session_state[k] = v
+                        # 변환 버튼을 누른 것과 동일하게 처리하도록 플래그 세팅
+                        st.session_state["v_auto_run"] = True
+
+                    st.button(
+                        "⚡ 자동 최적 변환",
+                        use_container_width=True,
+                        key="auto_optimize_btn",
+                        type="primary",
+                        help="AI 추천 설정을 자동 적용한 뒤 곧바로 변환까지 한 번에 실행합니다 (슬라이더를 직접 만질 필요 없음)",
+                        on_click=_auto_optimize_run_callback,
+                    )
 
                 # AI 슬라이더 수치 추천 펼침 카드
                 if _has_slider_recs and st.session_state.get("v62_show_ai_recs", False):
@@ -5868,6 +7638,63 @@ if not st.session_state.get("conversion_done", False):
                         """
                     )
 
+        # ✅ [v7.2] 작업자 이름 — 변환 버튼 바로 위 (컴퓨터 도장 기반 + 팝업 입력)
+        #   · 이름 있으면  → "✅ 작업자: OOO" 확인 표시 + 작은 [변경] 버튼 (팝업 안 뜸)
+        #   · 이름 없으면  → 안내 박스 + [이름 입력] 버튼 → 누르면 화면에 입력칸 펼침
+        #   이름은 이 PC의 도장(_uid)에 연결돼 DB에 저장 → 다음 접속부터 자동 적용.
+        _mw_saved = (st.session_state.get("worker_name") or "").strip()
+        if not _mw_saved:
+            # 세션에 없으면 이 도장에 저장된 이름을 DB에서 한 번 더 확인
+            _mw_saved = load_worker_name(_uid)
+            if _mw_saved:
+                st.session_state["worker_name"] = _mw_saved
+
+        # ── v7.0: 이름 입력 단순화 ──
+        #   · 버튼(저장/나중에/이름입력) 전부 제거 — 입력칸만 항상 표시.
+        #   · 타이핑한 값이 있으면 즉시 세션+DB에 반영 → 사이드바 경고 자동 해제.
+        #   · 변환 시점에도 한 번 더 반영되므로(아래 record_conversion) 이름 누락 없음.
+        if "worker_name_inline_input" not in st.session_state:
+            st.session_state["worker_name_inline_input"] = _mw_saved
+
+        st.markdown(
+            "<div style='font-size:0.85rem;color:#1a3a5c;font-weight:600;margin:4px 0 2px 0;'>"
+            "✍️ 작업자 이름 "
+            "<span style='color:#7a8fa6;font-size:0.78rem;font-weight:400;'>"
+            "(입력하면 자동 저장 · 이력에 이 이름으로 기록됩니다)</span></div>",
+            unsafe_allow_html=True,
+        )
+        _name_in = st.text_input(
+            "이름",
+            placeholder="예: 이영세",
+            key="worker_name_inline_input",
+            label_visibility="collapsed",
+        )
+
+        # 타이핑한 이름이 있으면 즉시 반영 (저장 버튼 불필요)
+        _typed_now = (_name_in or "").strip()
+        if _typed_now and _typed_now != _mw_saved:
+            st.session_state["worker_name"] = _typed_now
+            try:
+                save_worker_name(_uid, _typed_now)
+            except Exception:
+                pass
+            _mw_saved = _typed_now
+            # 사이드바 경고/이력 라벨까지 즉시 갱신되도록 1회 새로고침
+            #   (이름이 새로 확정된 순간에만 실행되므로 매 타이핑마다 돌지 않음)
+            if not st.session_state.get("_wn_synced_once"):
+                st.session_state["_wn_synced_once"] = True
+                st.rerun()
+
+        # 현재 적용된 이름 확인 표시 (있을 때만)
+        _cur_name = (st.session_state.get("worker_name", "") or "").strip()
+        if _cur_name:
+            st.markdown(
+                f"<div style='background:#eef4fb;border:1px solid #cfe0f5;"
+                f"border-radius:6px;padding:6px 12px;margin:2px 0 4px 0;font-size:0.85rem;color:#1a3a5c;'>"
+                f"✅ 작업자: <b>{_cur_name}</b></div>",
+                unsafe_allow_html=True,
+            )
+
         # 🆕 v6.6: 변환 버튼 라벨을 출력 형식에 맞게 동적 변경
         _v66_fmt_btn = st.session_state.get("v66_output_format", "dwg_only")
         _v66_btn_label = {
@@ -5875,6 +7702,55 @@ if not st.session_state.get("conversion_done", False):
             "dwg_only": "🏗️  DWG 파일로 변환",
             "both":     "📐🏗️  DXF + DWG 둘 다 변환",
         }.get(_v66_fmt_btn, "🏗️  DWG 파일로 변환")
+
+        # 🆕 v7.3: 활성 옵션 요약 칩 — 어떤 토글이 켜져 있는지 변환 전 한눈에 확인
+        _v73_chip_defs = [
+            ("use_ocr", "🔤 OCR"), ("USE_SUPER_RESOLUTION", "🤖 SR"),
+            ("use_enhance", "✨ 엣지강화"), ("use_normalize", "📏 두께정규화"),
+            ("USE_DESKEW", "📐 기울기보정"), ("USE_SPECKLE", "🧹 노이즈제거"),
+            ("USE_GAP_BRIDGE", "🔗 선연결"), ("USE_SPLINE", "〰️ SPLINE"),
+            ("USE_AUTO_CLEANUP", "🪄 자동정리"), ("USE_CROP", "✂️ Crop"),
+            ("USE_LINE_FIT", "✨ LINE치환"), ("USE_GEOMETRY_FITTING", "⭕ ARC/원"),
+            ("USE_HOUGH", "⭕ Hough원"), ("USE_HOUGH_LINES", "🎯 직선추출"),
+            ("USE_FLD_LINES", "🚀 FLD"), ("USE_ANGLE_SNAP", "📐 각도스냅"),
+            ("USE_SPUR_PRUNE", "🧬 잔가지"), ("USE_CORNER_ANCHOR", "📐 코너앵커"),
+            ("USE_DIR_STITCH", "🧭 방향잇기"), ("USE_DASH_DETECT", "▪▪ 대시선"),
+            ("USE_LAYER_SPLIT", "📂 레이어분리"), ("USE_HATCH_DETECT", "▦ 해치"),
+            ("USE_CLOSE_OUTLINE", "🔗 외곽폐합"), ("USE_FAST_THINNING", "🚀 고속스켈레톤"),
+        ]
+        _v73_on = []
+        for _vn, _vl in _v73_chip_defs:
+            try:
+                if bool(globals().get(_vn)):
+                    _v73_on.append(_vl)
+            except Exception:
+                pass
+        if _v73_on:
+            _v73_chips = "".join(
+                f"<span style='display:inline-block;background:#eef4fb;border:1px solid #cfe0f5;"
+                f"color:#1a3a5c;border-radius:4px;padding:1px 7px;margin:2px 3px 2px 0;"
+                f"font-size:0.68rem;font-family:\"JetBrains Mono\",monospace;'>{_c}</span>"
+                for _c in _v73_on
+            )
+            st.markdown(
+                f"<div style='margin:2px 0 6px 0;line-height:1.7;'>"
+                f"<span style='font-size:0.7rem;color:#5a7a96;font-weight:600;'>활성 옵션 {len(_v73_on)}개:</span> "
+                f"{_v73_chips}</div>",
+                unsafe_allow_html=True,
+            )
+
+        # 🆕 v7.3: 변환 버튼 행 화면 상단 고정(sticky) — 길게 스크롤해도 버튼 접근 가능
+        #   (마음에 안 들면 이 <style> 블록 하나만 지우면 원래대로 복귀)
+        st.markdown("""
+        <style>
+        div[data-testid="stHorizontalBlock"]:has(.st-key-run_btn){
+            position: sticky; top: 3.2rem; z-index: 60;
+            background: var(--background-color, #ffffff);
+            padding: 4px 0 6px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
         bcol1, bcol2 = st.columns([3, 1], gap="small")
         with bcol1:
@@ -5887,7 +7763,9 @@ if not st.session_state.get("conversion_done", False):
                 if k in st.session_state: del st.session_state[k]
             st.rerun()
 
-        if run_clicked:
+        # 🆕 v7.1 [1번]: '⚡ 자동 최적 변환' 콜백이 세운 플래그도 변환 버튼과 동일하게 처리
+        _auto_run_now = st.session_state.pop("v_auto_run", False)
+        if run_clicked or _auto_run_now:
             res, z_buf = [], io.BytesIO()
             failed_files = []  # v4.0: 실패 파일 목록
             prog = st.progress(0, text="변환 준비 중...")
@@ -5907,55 +7785,126 @@ if not st.session_state.get("conversion_done", False):
             file_states = ["pending"] * len(files)
             dot_placeholder.markdown(render_dots(file_states), unsafe_allow_html=True)
 
+            # ════════════════════════════════════════════════════════════
+            # ⚡ v7.0: DXF 계산 단계 사전 병렬 처리
+            #   • OCR OFF → ProcessPoolExecutor 로 여러 파일 동시 변환 (코어 수만큼)
+            #   • OCR ON  → 안전하게 순차 (모델 중복 로드 방지)
+            #   • 여기서는 DXF(+외곽선 후처리)까지만 계산. DWG/ZIP/통계는
+            #     아래 기존 루프에서 그대로 순차 처리 (ODA 충돌·로직 보존).
+            # ════════════════════════════════════════════════════════════
+            _use_parallel = (not use_ocr)  # OCR 켜져 있으면 순차
+
+            # 모든 파일의 변환 인자(_conv_kwargs)를 먼저 만들어 task 목록 구성
+            _common_kwargs = dict(
+                layer_name=layer_name, image_type=image_type, use_ocr=use_ocr,
+                t_val=THRESHOLD_VAL, s_tol=STRAIGHT_TOL, s_eps=SIMPLIFY_EPS,
+                s_den=SPLINE_DENSITY, s_win=SMOOTH_WINDOW, epsilon=EPSILON,
+                use_hough=USE_HOUGH, circle_sens=CIRCLE_SENS,
+                circle_min_r=CIRCLE_MIN_R, circle_max_r=CIRCLE_MAX_R, max_circles=MAX_CIRCLES,
+                use_pattern=USE_PATTERN, use_spline=USE_SPLINE,
+                use_geometry_fitting=USE_GEOMETRY_FITTING, user_scale=USER_SCALE,
+                use_enhance=use_enhance, sharpen_strength=SHARPEN_STR, dedup_dist=DEDUP_DIST,
+                use_line_fit=USE_LINE_FIT, line_rms_thresh=LINE_RMS_THRESH,
+                use_angle_snap=USE_ANGLE_SNAP, snap_tol_deg=SNAP_TOL_DEG,
+                use_hough_lines=USE_HOUGH_LINES, hough_min_len=HOUGH_MIN_LEN,
+                hough_max_gap=HOUGH_MAX_GAP, hough_thresh=HOUGH_THRESH,
+                min_path_len=MIN_PATH_LEN, stitch_gap=STITCH_GAP,
+                use_normalize=use_normalize, normalize_thickness=NORMALIZE_THICKNESS,
+                use_spur_prune=USE_SPUR_PRUNE, spur_max_len=SPUR_MAX_LEN,
+                use_corner_anchor=USE_CORNER_ANCHOR, corner_angle_deg=CORNER_ANGLE_DEG,
+                use_dir_stitch=USE_DIR_STITCH, dir_stitch_thresh=DIR_STITCH_THRESH,
+                use_deskew=USE_DESKEW, use_speckle=USE_SPECKLE,
+                min_speckle_area=MIN_SPECKLE_AREA,
+                use_gap_bridge=USE_GAP_BRIDGE, gap_bridge_size=GAP_BRIDGE_SIZE,
+                use_dash_detect=USE_DASH_DETECT, use_layer_split=USE_LAYER_SPLIT,
+                use_hatch_detect=USE_HATCH_DETECT,
+                use_auto_cleanup=USE_AUTO_CLEANUP, cleanup_level=CLEANUP_LEVEL,
+                use_super_resolution=USE_SUPER_RESOLUTION,
+                sr_threshold_px=SR_THRESHOLD_PX,
+                # 🆕 v7.3
+                use_fast_thinning=USE_FAST_THINNING,
+                use_fld_lines=USE_FLD_LINES,
+            )
+
+            # 🆕 v7.3: 변환 시점 설정 서명 저장 (결과 화면 '설정 변경됨' 안내용)
+            st.session_state["v73_conv_settings_sig"] = _conv_settings_signature()
+
+            _tasks = []
+            for _ti, _tf in enumerate(files):
+                _ti_bytes = _tf.getvalue()
+                if USE_CROP:
+                    _ti_bytes = apply_crop_to_bytes(_ti_bytes, CROP_TOP, CROP_BOT, CROP_LEFT, CROP_RIGHT)
+                _tasks.append({
+                    "index":      _ti,
+                    "name":       _tf.name,
+                    "img_bytes":  _ti_bytes,
+                    "conv_kwargs": dict(_common_kwargs),
+                    "use_close":  USE_CLOSE_OUTLINE,
+                    "close_gap":  float(CLOSE_OUTLINE_GAP) if USE_CLOSE_OUTLINE else 0.5,
+                })
+
+            _mode_txt = "⚡ 병렬" if (_use_parallel and len(files) > 1) else "🛡️ 순차"
+            prog.progress(0.02, text=f"{_mode_txt} 변환 준비 중... ({len(files)}개 파일)")
+
+            # ⏱️ v7.0: 예상 남은 시간(ETA) 계산용 시작 시각
+            import time as _time
+            _batch_t0 = _time.time()
+
+            def _fmt_eta(sec):
+                """초 → '약 1분 20초' / '약 45초' 형태로 변환"""
+                sec = int(max(0, sec))
+                if sec >= 60:
+                    return f"약 {sec // 60}분 {sec % 60}초"
+                return f"약 {sec}초"
+
+            def _on_one_done(done_n, total_n, r):
+                _idx = r["index"]
+                file_states[_idx] = "done" if r.get("ok") else "fail"
+                dot_placeholder.markdown(render_dots(file_states), unsafe_allow_html=True)
+                _nm = r.get("name", "")
+                # ⏱️ ETA: (경과시간 / 완료수) × 남은수
+                _elapsed = _time.time() - _batch_t0
+                _eta_txt = ""
+                if done_n > 0 and done_n < total_n and _elapsed > 0.5:
+                    _per = _elapsed / done_n
+                    _remain = _per * (total_n - done_n)
+                    _eta_txt = f" · ⏳ 남은 시간 {_fmt_eta(_remain)}"
+                prog.progress(min(0.02 + 0.78 * (done_n / max(1, total_n)), 0.80),
+                              text=f"{_mode_txt} 변환 중 ({done_n}/{total_n}){_eta_txt} · {_nm}")
+
+            # 실제 DXF 병렬/순차 계산 (결과는 index 순 정렬되어 반환)
+            _precomputed = run_batch_dxf(
+                _tasks, use_parallel=_use_parallel,
+                max_workers=_MAX_WORKERS_DEFAULT, progress_cb=_on_one_done,
+            )
+
             with zipfile.ZipFile(z_buf, "w", zipfile.ZIP_DEFLATED) as zf:
                 for i, f in enumerate(files):
-                    file_states[i] = "active"
-                    dot_placeholder.markdown(render_dots(file_states), unsafe_allow_html=True)
-                    # 🆕 v6.6: 진행률 텍스트에 출력 형식 표시
+                    # 🆕 v6.6 / v7.0: DXF 계산은 끝났고, 이제 DWG 변환·압축 단계
                     _fmt_label_dot = {
                         "dxf_only": "DXF",
                         "dwg_only": "DWG",
                         "both":     "DXF+DWG",
                     }.get(st.session_state.get("v66_output_format", "dwg_only"), "DWG")
-                    prog.progress(i / len(files), text=f"⚙️ 변환 중 [{_fmt_label_dot}] ({i+1}/{len(files)}) · {f.name}")
+                    prog.progress(min(0.80 + 0.18 * ((i + 1) / len(files)), 0.99),
+                                  text=f"💾 저장 중 [{_fmt_label_dot}] ({i+1}/{len(files)}) · {f.name}")
 
                     try:
-                        img_bytes = f.getvalue()
-                        # 🌟 v5.0: Crop 적용 (켜진 경우만)
-                        if USE_CROP:
-                            img_bytes = apply_crop_to_bytes(img_bytes, CROP_TOP, CROP_BOT, CROP_LEFT, CROP_RIGHT)
+                        # ⚡ v7.0: DXF 계산은 위에서 이미 병렬/순차로 끝냄.
+                        #   여기서는 사전계산 결과(_precomputed[i])를 꺼내 쓴다.
+                        _pre = _precomputed[i] if i < len(_precomputed) else None
+                        if _pre is None or not _pre.get("ok"):
+                            # 워커 단계에서 실패한 파일 → 예외로 넘겨 기존 실패 처리 경로 사용
+                            raise RuntimeError(
+                                (_pre or {}).get("error", "변환 실패 (사전계산 결과 없음)")
+                            )
 
-                        # 🔁 v6.2: 재변환을 위해 변환 인자를 dict로 저장 (current_settings에서 갱신 가능)
-                        _conv_kwargs = dict(
-                            layer_name=layer_name, image_type=image_type, use_ocr=use_ocr,
-                            t_val=THRESHOLD_VAL, s_tol=STRAIGHT_TOL, s_eps=SIMPLIFY_EPS,
-                            s_den=SPLINE_DENSITY, s_win=SMOOTH_WINDOW, epsilon=EPSILON,
-                            use_hough=USE_HOUGH, circle_sens=CIRCLE_SENS,
-                            circle_min_r=CIRCLE_MIN_R, circle_max_r=CIRCLE_MAX_R, max_circles=MAX_CIRCLES,
-                            use_pattern=USE_PATTERN, use_spline=USE_SPLINE,
-                            use_geometry_fitting=USE_GEOMETRY_FITTING, user_scale=USER_SCALE,
-                            use_enhance=use_enhance, sharpen_strength=SHARPEN_STR, dedup_dist=DEDUP_DIST,
-                            use_line_fit=USE_LINE_FIT, line_rms_thresh=LINE_RMS_THRESH,
-                            use_angle_snap=USE_ANGLE_SNAP, snap_tol_deg=SNAP_TOL_DEG,
-                            use_hough_lines=USE_HOUGH_LINES, hough_min_len=HOUGH_MIN_LEN,
-                            hough_max_gap=HOUGH_MAX_GAP, hough_thresh=HOUGH_THRESH,
-                            min_path_len=MIN_PATH_LEN, stitch_gap=STITCH_GAP,
-                            use_normalize=use_normalize, normalize_thickness=NORMALIZE_THICKNESS,
-                            use_spur_prune=USE_SPUR_PRUNE, spur_max_len=SPUR_MAX_LEN,
-                            use_corner_anchor=USE_CORNER_ANCHOR, corner_angle_deg=CORNER_ANGLE_DEG,
-                            use_dir_stitch=USE_DIR_STITCH, dir_stitch_thresh=DIR_STITCH_THRESH,
-                            use_deskew=USE_DESKEW, use_speckle=USE_SPECKLE,
-                            min_speckle_area=MIN_SPECKLE_AREA,
-                            use_gap_bridge=USE_GAP_BRIDGE, gap_bridge_size=GAP_BRIDGE_SIZE,
-                            use_dash_detect=USE_DASH_DETECT, use_layer_split=USE_LAYER_SPLIT,
-                            use_hatch_detect=USE_HATCH_DETECT,
-                            use_auto_cleanup=USE_AUTO_CLEANUP, cleanup_level=CLEANUP_LEVEL,
-                            # 🆕 v6.3
-                            use_super_resolution=USE_SUPER_RESOLUTION,
-                            sr_threshold_px=SR_THRESHOLD_PX,
-                        )
+                        img_bytes = _tasks[i]["img_bytes"]   # crop까지 적용된 입력
+                        # 🔁 v6.2: 재변환 호환 위해 변환 인자를 결과에 보존
+                        _conv_kwargs = _tasks[i]["conv_kwargs"]
+                        d_bytes = _pre["d_bytes"]
+                        rpt     = _pre["report"]
 
-                        d_bytes, rpt = convert_to_dxf_bytes(img_bytes, **_conv_kwargs)
                         base = os.path.splitext(f.name)[0]
                         # 🆕 v6.9: 파일명 규칙 단순화
                         #   기존: 원본이름_dxf변환.dxf, 원본이름_dxf변환 (2).dxf
@@ -6007,6 +7956,9 @@ if not st.session_state.get("conversion_done", False):
                                 _dwg_bytes = None
 
                         # ZIP에 추가 + results 등록 (출력 형식에 맞춰)
+                        # 🔍 v7.0: 사전계산 결과에서 QA 꺼내기
+                        _qa = _precomputed[i].get("qa", {}) if _precomputed[i] else {}
+
                         if _out_fmt_actual == "dxf_only":
                             # DXF만
                             zf.writestr(d_name, d_bytes)
@@ -6014,19 +7966,18 @@ if not st.session_state.get("conversion_done", False):
                                 "filename": d_name, "original_name": f.name,
                                 "content": d_bytes, "image": img_bytes, "report": rpt,
                                 "conv_kwargs": _conv_kwargs,
-                                "format": "dxf",
+                                "format": "dxf", "qa": _qa,
                             })
                         elif _out_fmt_actual == "dwg_only":
                             # DWG만 (DXF는 ZIP에 안 넣음)
                             zf.writestr(_dwg_name, _dwg_bytes)
                             res.append({
                                 "filename": _dwg_name, "original_name": f.name,
-                                # content는 미리보기/재변환 호환성을 위해 DXF를 그대로 유지
-                                "content": d_bytes,             # 미리보기/재변환용 DXF 원본
-                                "dwg_content": _dwg_bytes,      # 실제 다운로드용 DWG
+                                "content": d_bytes,
+                                "dwg_content": _dwg_bytes,
                                 "image": img_bytes, "report": rpt,
                                 "conv_kwargs": _conv_kwargs,
-                                "format": "dwg",
+                                "format": "dwg", "qa": _qa,
                             })
                         else:  # "both" — DXF + DWG 둘 다
                             zf.writestr(d_name, d_bytes)
@@ -6037,7 +7988,7 @@ if not st.session_state.get("conversion_done", False):
                                 "conv_kwargs": _conv_kwargs,
                                 "dwg_filename": _dwg_name,
                                 "dwg_content":  _dwg_bytes,
-                                "format": "both",
+                                "format": "both", "qa": _qa,
                             })
 
                         _success_count += 1
@@ -6051,7 +8002,34 @@ if not st.session_state.get("conversion_done", False):
 
             prog.progress(1.0, text=f"✅ 완료! 성공 {_success_count}건 / 실패 {len(failed_files)}건")
             if _success_count > 0:
-                record_conversion(_uid, _success_count, image_type, success=True)
+                # 🆕 v7.0: 이름 입력칸에 타이핑만 하고 [저장]을 안 눌렀어도,
+                #   변환 시점에 입력값이 있으면 자동으로 채택해 이력에 기록 (이름 누락 방지).
+                _wn = (st.session_state.get("worker_name", "") or "").strip()
+                if not _wn:
+                    _typed = (st.session_state.get("worker_name_inline_input", "") or "").strip()
+                    if _typed:
+                        _wn = _typed
+                        st.session_state["worker_name"] = _typed
+                        try:
+                            save_worker_name(_uid, _typed)   # 다음 접속에도 유지되게 DB 저장
+                        except Exception:
+                            pass
+                record_conversion(_uid, _success_count, image_type, success=True,
+                                  worker_name=_wn)
+                # 🆕 v7.0: 한 번이라도 변환했으면 온보딩 가이드 '봤음' 처리
+                #   → 변환 후 '처음으로 돌아가기' 해도 가이드가 다시 뜨지 않음.
+                if not st.session_state.get("_onboarding_seen_db"):
+                    st.session_state["_onboarding_seen_db"] = True
+                    st.session_state["onboarding_dismissed"] = True
+                    mark_onboarding_seen(_uid)
+                # 🆕 v7.1 [4번]: 이번 변환에 쓴 설정을 '자동 이력 프리셋'으로 저장 (최근 10개 회전)
+                #   나중에 사이드바 이력에서 ↩️ 버튼으로 이 설정을 그대로 복원할 수 있다.
+                try:
+                    _snap = collect_current_settings(st.session_state)
+                    if _snap:
+                        save_auto_history_preset(_uid, image_type, _snap, keep=10)
+                except Exception:
+                    pass
             if res or failed_files:
                 st.session_state.update({
                     "dxf_results": res,
@@ -6227,7 +8205,7 @@ if not st.session_state.get("conversion_done", False):
         with col_dxf:
             st.markdown("""<div class='preview-title after'>
                 <span class='prev-step-num s3'>3</span>
-                <span>최종 DXF 미리보기</span>
+                <span>최종 DWG 미리보기</span>
             </div>""", unsafe_allow_html=True)
 
             # ── 배경 선택 (패널 인라인) ──
@@ -6256,12 +8234,12 @@ if not st.session_state.get("conversion_done", False):
             # 🆕 v6.0: 오버레이 미리보기 모드 선택 + 🎯 v6.1 차이 비교 추가
             _preview_mode = st.radio(
                 "미리보기 모드",
-                ["🌑 DXF 단독", "🖼️ 래스터 오버레이", "🎯 차이 비교 (검수)"],
+                ["🌑 DWG 단독", "🖼️ 래스터 오버레이", "🎯 차이 비교 (검수)"],
                 index=0,
                 key="preview_mode_choice",
                 horizontal=True,
                 label_visibility="collapsed",
-                help="DXF 단독: 변환된 벡터만 | 오버레이: 원본+DXF 겹쳐보기 | 차이 비교: 누락선(빨강)·추가선(청록)·정상(회색) 시각화 — 실무 검수용"
+                help="DWG 단독: 변환된 벡터만 | 오버레이: 원본+DWG 겹쳐보기 | 차이 비교: 누락선(빨강)·추가선(청록)·정상(회색) 시각화 — 실무 검수용"
             )
 
             # 🎚️ v6.2: 오버레이 투명도 슬라이더 — 3순위 신규 기능
@@ -6279,6 +8257,187 @@ if not st.session_state.get("conversion_done", False):
                     )
             else:
                 _overlay_alpha = 0.40
+
+            # 🆕 v7.1 [2번·5번]: 빠른 미리보기 / A·B 품질 비교
+            #   미리보기 변환에 쓰는 현재 설정을 dict로 모아 두 기능이 공유.
+            #   (변환 버튼의 _conv_kwargs 와 동일한 키 구조 — convert_to_dxf_bytes 호환)
+            _preview_kwargs = dict(
+                layer_name=layer_name, image_type=image_type, use_ocr=False,
+                t_val=THRESHOLD_VAL, s_tol=STRAIGHT_TOL, s_eps=SIMPLIFY_EPS,
+                s_den=SPLINE_DENSITY, s_win=SMOOTH_WINDOW, epsilon=EPSILON,
+                use_hough=USE_HOUGH, circle_sens=CIRCLE_SENS,
+                circle_min_r=CIRCLE_MIN_R, circle_max_r=CIRCLE_MAX_R, max_circles=MAX_CIRCLES,
+                use_pattern=USE_PATTERN, use_spline=USE_SPLINE,
+                use_geometry_fitting=USE_GEOMETRY_FITTING, user_scale=USER_SCALE,
+                use_enhance=use_enhance, sharpen_strength=SHARPEN_STR, dedup_dist=DEDUP_DIST,
+                use_line_fit=USE_LINE_FIT, line_rms_thresh=LINE_RMS_THRESH,
+                use_angle_snap=USE_ANGLE_SNAP, snap_tol_deg=SNAP_TOL_DEG,
+                use_hough_lines=USE_HOUGH_LINES, hough_min_len=HOUGH_MIN_LEN,
+                hough_max_gap=HOUGH_MAX_GAP, hough_thresh=HOUGH_THRESH,
+                min_path_len=MIN_PATH_LEN, stitch_gap=STITCH_GAP,
+                use_normalize=use_normalize, normalize_thickness=NORMALIZE_THICKNESS,
+                use_spur_prune=USE_SPUR_PRUNE, spur_max_len=SPUR_MAX_LEN,
+                use_corner_anchor=USE_CORNER_ANCHOR, corner_angle_deg=CORNER_ANGLE_DEG,
+                use_dir_stitch=USE_DIR_STITCH, dir_stitch_thresh=DIR_STITCH_THRESH,
+                use_deskew=USE_DESKEW, use_speckle=USE_SPECKLE,
+                min_speckle_area=MIN_SPECKLE_AREA,
+                use_gap_bridge=USE_GAP_BRIDGE, gap_bridge_size=GAP_BRIDGE_SIZE,
+                use_dash_detect=USE_DASH_DETECT, use_layer_split=USE_LAYER_SPLIT,
+                use_hatch_detect=USE_HATCH_DETECT,
+                use_auto_cleanup=USE_AUTO_CLEANUP, cleanup_level=CLEANUP_LEVEL,
+                use_super_resolution=USE_SUPER_RESOLUTION,
+                sr_threshold_px=SR_THRESHOLD_PX,
+                # 🆕 v7.3
+                use_fast_thinning=USE_FAST_THINNING,
+                use_fld_lines=USE_FLD_LINES,
+            )
+
+            _qp_cols = st.columns(2, gap="small")
+            with _qp_cols[0]:
+                if st.button("⚡ 빠른 미리보기", use_container_width=True,
+                             key="v_quick_preview_btn",
+                             help="이미지 중앙 일부 영역만 즉시 변환해서 현재 설정 효과를 빠르게 확인합니다 (전체 변환 전 시험용)"):
+                    st.session_state["v_quick_preview_on"] = True
+            with _qp_cols[1]:
+                if st.button("🆚 A/B 품질 비교", use_container_width=True,
+                             key="v_ab_compare_btn",
+                             help="현재 설정 vs AI 추천 설정을 같은 영역에서 각각 변환해 품질 점수를 나란히 비교합니다"):
+                    st.session_state["v_ab_compare_on"] = True
+
+            # ── ⚡ 빠른 미리보기 결과 ──
+            if st.session_state.get("v_quick_preview_on", False):
+                with st.spinner("⚡ 중앙 영역 빠른 변환 중..."):
+                    _qp_dxf, _qp_rpt, _qp_used = _quick_region_preview(
+                        selected_bytes, _preview_kwargs, max_side=400
+                    )
+                    # 🆕 v7.2: 빠른 미리보기에도 외곽선 자동완성 반영(토글 ON 시)
+                    if _qp_dxf is not None and st.session_state.get("v72_use_close_outline", False):
+                        try:
+                            _qp_dxf, _ = close_open_outlines_dxf(
+                                _qp_dxf,
+                                gap_tol=float(st.session_state.get("v72_close_gap", 3.0)),
+                                min_edges=3,
+                            )
+                        except Exception:
+                            pass
+                if _qp_dxf is not None:
+                    try:
+                        _qp_fig = render_dxf_preview(
+                            _qp_dxf, bg_color=PREVIEW_BG_COLOR, line_color=PREVIEW_LINE_COLOR
+                        )
+                        if _qp_fig is not None and not isinstance(_qp_fig, str) and _qp_fig != "EMPTY":
+                            if _PLOTLY_AVAILABLE and hasattr(_qp_fig, "_is_plotly"):
+                                st.plotly_chart(_qp_fig, use_container_width=True,
+                                                config={"scrollZoom": True, "displaylogo": False})
+                            else:
+                                st.pyplot(_qp_fig, use_container_width=True)
+                                plt.close(_qp_fig)
+                            _qp_region_txt = "중앙 400px 영역" if _qp_used else "전체(영역 추출 실패)"
+                            st.caption(f"⚡ 빠른 미리보기 · {_qp_region_txt} · 선 {_qp_rpt.get('lines',0)}개 · 원 {_qp_rpt.get('circles',0)}개")
+                        elif _qp_fig == "EMPTY":
+                            st.info("이 영역에서 선이 감지되지 않았습니다. 인식 민감도를 조정해 보세요.")
+                        else:
+                            st.info("빠른 미리보기 렌더링에 실패했습니다.")
+                    except Exception:
+                        st.info("빠른 미리보기 렌더링에 실패했습니다.")
+                else:
+                    st.info("빠른 미리보기 변환에 실패했습니다.")
+                st.session_state["v_quick_preview_on"] = False
+
+            # ── 🆚 A/B 품질 비교 결과 ──
+            if st.session_state.get("v_ab_compare_on", False):
+                with st.spinner("🆚 A(현재 설정) · B(AI 추천) 변환·채점 중..."):
+                    # A = 현재 설정
+                    _ab_a = _score_settings(selected_bytes, _preview_kwargs, max_side=520)
+                    # B = AI 추천 적용본 (현재 설정 위에 추천값을 덮어쓴 dict)
+                    _ab_b = None
+                    try:
+                        _qa_b = analyze_image_quality(selected_bytes)
+                        _rec_b = recommend_slider_values(_qa_b, image_type=image_type) if _qa_b else None
+                    except Exception:
+                        _qa_b, _rec_b = None, None
+                    if _rec_b and _rec_b.get("slider_values"):
+                        # 추천 슬라이더 키 → _preview_kwargs 인자명 매핑
+                        _key_map = {
+                            "sl_threshold": "t_val", "sl_epsilon": "epsilon",
+                            "sl_eps": "epsilon", "sl_smooth_window": "s_win",
+                            "sl_smooth": "s_win", "sl_min_path_len": "min_path_len",
+                            "sl_stitch_gap": "stitch_gap", "sl_dedup_dist": "dedup_dist",
+                            "v6_min_speckle_area": "min_speckle_area",
+                            "v6_gap_bridge_size": "gap_bridge_size",
+                            "sl_sharpen_strength": "sharpen_strength",
+                        }
+                        _kw_b = dict(_preview_kwargs)
+                        for _sk, _sv in _rec_b["slider_values"].items():
+                            _ak = _key_map.get(_sk)
+                            if _ak:
+                                _kw_b[_ak] = _sv
+                        # 추천 토글도 반영 (auto_options 가 있으면)
+                        _auto_opts = (_qa_b or {}).get("auto_options", {})
+                        _tog_map = {
+                            "opt_use_enhance": "use_enhance",
+                            "v6_use_speckle": "use_speckle",
+                            "v6_use_gap_bridge": "use_gap_bridge",
+                            "opt_use_normalize": "use_normalize",
+                            "v61_use_auto_cleanup": "use_auto_cleanup",
+                        }
+                        for _tk, _tv in _auto_opts.items():
+                            _ak = _tog_map.get(_tk)
+                            if _ak:
+                                _kw_b[_ak] = _tv
+                        _ab_b = _score_settings(selected_bytes, _kw_b, max_side=520)
+
+                if _ab_a is not None:
+                    _a_s = _ab_a["score"]
+                    _b_s = _ab_b["score"] if _ab_b is not None else None
+                    # 승자 판정
+                    if _b_s is not None and _b_s > _a_s:
+                        _a_badge, _b_badge = "", "✅ 추천"
+                    elif _b_s is not None and _a_s > _b_s:
+                        _a_badge, _b_badge = "✅ 추천", ""
+                    else:
+                        _a_badge = _b_badge = ""
+
+                    def _grade_color(g):
+                        return {"A+": "#16a34a", "A": "#16a34a", "B": "#0078d4",
+                                "C": "#f59e0b", "D": "#ea580c", "F": "#dc2626"}.get(g, "#5a7a96")
+
+                    _cab = st.columns(2, gap="small")
+                    with _cab[0]:
+                        _c = _grade_color(_ab_a["grade"])
+                        st.markdown(
+                            f"<div style='background:#fff;border:1px solid #d0d7e0;border-top:3px solid {_c};"
+                            f"border-radius:7px;padding:10px 12px;text-align:center;'>"
+                            f"<div style='font-size:0.72rem;color:#5a7a96;font-weight:600;'>A · 현재 설정 "
+                            f"<span style='color:#16a34a'>{_a_badge}</span></div>"
+                            f"<div style='font-size:1.6rem;font-weight:800;color:{_c};font-family:\"JetBrains Mono\",monospace;line-height:1.2;'>"
+                            f"{_ab_a['score']}<span style='font-size:0.7rem;color:#9ab5d0'>/100</span></div>"
+                            f"<div style='font-size:0.8rem;font-weight:700;color:{_c};'>{_ab_a['grade']}</div>"
+                            f"<div style='font-size:0.66rem;color:#7a8fa6;margin-top:3px;'>선 {_ab_a['lines']} · 원 {_ab_a['circles']}</div>"
+                            f"</div>", unsafe_allow_html=True)
+                    with _cab[1]:
+                        if _ab_b is not None:
+                            _c = _grade_color(_ab_b["grade"])
+                            st.markdown(
+                                f"<div style='background:#fff;border:1px solid #d0d7e0;border-top:3px solid {_c};"
+                                f"border-radius:7px;padding:10px 12px;text-align:center;'>"
+                                f"<div style='font-size:0.72rem;color:#5a7a96;font-weight:600;'>B · AI 추천 "
+                                f"<span style='color:#16a34a'>{_b_badge}</span></div>"
+                                f"<div style='font-size:1.6rem;font-weight:800;color:{_c};font-family:\"JetBrains Mono\",monospace;line-height:1.2;'>"
+                                f"{_ab_b['score']}<span style='font-size:0.7rem;color:#9ab5d0'>/100</span></div>"
+                                f"<div style='font-size:0.8rem;font-weight:700;color:{_c};'>{_ab_b['grade']}</div>"
+                                f"<div style='font-size:0.66rem;color:#7a8fa6;margin-top:3px;'>선 {_ab_b['lines']} · 원 {_ab_b['circles']}</div>"
+                                f"</div>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(
+                                "<div style='background:#f8fafc;border:1px dashed #d0d7e0;border-radius:7px;"
+                                "padding:10px 12px;text-align:center;font-size:0.72rem;color:#7a8fa6;'>"
+                                "B · AI 추천<br>추천값을 만들 수 없어<br>비교를 건너뜀</div>",
+                                unsafe_allow_html=True)
+                    st.caption("🆚 같은 중앙 영역(520px)을 두 설정으로 변환해 채점한 결과입니다. 점수가 높은 쪽 설정을 사이드바에 반영해 보세요.")
+                else:
+                    st.info("A/B 비교 변환에 실패했습니다.")
+                st.session_state["v_ab_compare_on"] = False
 
             with st.spinner("🔄 DXF 변환 렌더링 중..."):
                 try:
@@ -6308,7 +8467,9 @@ if not st.session_state.get("conversion_done", False):
                         # 🪄 v6.1
                         USE_AUTO_CLEANUP, CLEANUP_LEVEL,
                         # 🆕 v6.3
-                        USE_SUPER_RESOLUTION, SR_THRESHOLD_PX
+                        USE_SUPER_RESOLUTION, SR_THRESHOLD_PX,
+                        # 🆕 v7.3
+                        use_fast_thinning=USE_FAST_THINNING, use_fld_lines=USE_FLD_LINES
                     )
 
                     # 미리보기 모드 분기
@@ -6323,7 +8484,7 @@ if not st.session_state.get("conversion_done", False):
                         if _ov_fig is not None:
                             st.pyplot(_ov_fig, use_container_width=True)
                             plt.close(_ov_fig)
-                            st.caption(f"🖼️ 오버레이: 원본(투명도 {int(_overlay_alpha*100)}%) + DXF 선 겹쳐보기")
+                            st.caption(f"🖼️ 오버레이: 원본(투명도 {int(_overlay_alpha*100)}%) + DWG 선 겹쳐보기")
                         else:
                             st.info("오버레이 생성에 실패했습니다.")
                         fig = None
@@ -6391,7 +8552,7 @@ if not st.session_state.get("conversion_done", False):
                                 </div>
                               </div>
                               <div style='font-size:0.7rem;color:#7a8fa6;margin-top:3px;'>
-                                💡 <b style='color:#dc2626;'>빨간 부분</b>이 DXF에서 빠진 선입니다. 사이드바의 보정 옵션을 조정해보세요.
+                                💡 <b style='color:#dc2626;'>빨간 부분</b>이 결과에서 빠진 선입니다. 사이드바의 보정 옵션을 조정해보세요.
                               </div>
                             </div>
                             """, unsafe_allow_html=True)
@@ -6451,11 +8612,122 @@ if not st.session_state.get("conversion_done", False):
                                 <span>📐 선 {_preview_rpt["lines"]}개 · 원 {_preview_rpt["circles"]}개 · <b style='color:{_grade_color}'>품질 {_q_score}/100 · {_q_grade}</b></span>
                                 <span>scale {_preview_rpt["scale"]:.2f}{_zoom_tip}</span>
                             </div>""", unsafe_allow_html=True)
+
+                            # 🆕 v7.0: 실패 원인 안내 — 점수가 아쉬울 때(85점 미만)만 진단 팁 표시
+                            try:
+                                if _q_score < 85:
+                                    _diag_tips = diagnose_quality(_preview_rpt)
+                                    if _diag_tips:
+                                        _tip_rows = ""
+                                        for _t in _diag_tips[:3]:  # 최대 3개만
+                                            _tip_rows += (
+                                                f"<div style='margin:5px 0;padding:7px 10px;background:#fff;"
+                                                f"border-radius:5px;border-left:3px solid #f59e0b;'>"
+                                                f"<div style='font-size:0.74rem;font-weight:700;color:#92400e;'>"
+                                                f"{_t['icon']} {_t['title']}</div>"
+                                                f"<div style='font-size:0.7rem;color:#5a7a96;margin-top:2px;'>"
+                                                f"💡 {_t['tip']}</div></div>"
+                                            )
+                                        st.markdown(
+                                            f"<div style='background:#fffbeb;border:1px solid #fde68a;"
+                                            f"border-radius:7px;padding:8px 10px;margin-top:6px;'>"
+                                            f"<div style='font-size:0.72rem;font-weight:700;color:#b45309;"
+                                            f"margin-bottom:3px;'>🔧 품질 개선 도우미 "
+                                            f"(품질 {_q_score}점 · {_q_grade}등급)</div>"
+                                            f"{_tip_rows}</div>",
+                                            unsafe_allow_html=True
+                                        )
+                            except Exception:
+                                pass
                         except Exception:
                             pass
                 except Exception as e:
                     st.error(f"❌ 미리보기 실패: {e}")
+
+        # ═══════════════════════════════════════════════
+        # 🔍 v7.0: 전체화면 원본↔결과 비교 버튼
+        # ═══════════════════════════════════════════════
+        try:
+            _cmp_dxf = None
+            try:
+                _cmp_dxf = preview_dxf  # 위 미리보기에서 생성된 DXF
+            except NameError:
+                _cmp_dxf = None
+            if _cmp_dxf and selected_bytes:
+                _cmp_bg   = PREVIEW_BG_COLOR if "PREVIEW_BG_COLOR" in dir() else "#1a1d2e"
+                _cmp_line = PREVIEW_LINE_COLOR if "PREVIEW_LINE_COLOR" in dir() else "#e0e4ef"
+                st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+                if st.button("🔍  원본 ↔ 결과 전체화면 비교", use_container_width=True,
+                             key="open_fullscreen_compare",
+                             help="원본과 DXF 결과를 큰 화면에서 나란히·겹쳐서 비교합니다."):
+                    st.session_state["_show_fs_compare"] = True
+
+                # dialog 지원 시 모달, 미지원 시 화면 안에 펼침
+                if st.session_state.get("_show_fs_compare", False):
+                    if _has_dialog():
+                        @st.dialog("🔍 원본 ↔ 결과 비교", width="large")
+                        def _fs_compare_dialog():
+                            _render_fullscreen_compare(selected_bytes, _cmp_dxf,
+                                                       bg_color=_cmp_bg, line_color=_cmp_line)
+                            if st.button("닫기", use_container_width=True, key="close_fs_compare"):
+                                st.session_state["_show_fs_compare"] = False
+                                st.rerun()
+                        _fs_compare_dialog()
+                    else:
+                        # 구버전 fallback — 화면 안에 펼침
+                        with st.container(border=True):
+                            st.markdown("#### 🔍 원본 ↔ 결과 비교")
+                            _render_fullscreen_compare(selected_bytes, _cmp_dxf,
+                                                       bg_color=_cmp_bg, line_color=_cmp_line)
+                            if st.button("✖ 비교 닫기", use_container_width=True, key="close_fs_compare_inline"):
+                                st.session_state["_show_fs_compare"] = False
+                                st.rerun()
+        except Exception as _e:
+            pass
     else:
+        # ── 🎓 v7.0: 첫 사용 온보딩 가이드 (이 PC에서 맨 처음 1번만 표시) ──
+        #   DB에 '봤음'을 저장해 새로고침·재실행·다음날에도 다시 뜨지 않는다.
+        #   세션 동안의 임시 닫기(onboarding_dismissed)도 함께 확인.
+        if "_onboarding_seen_db" not in st.session_state:
+            st.session_state["_onboarding_seen_db"] = has_seen_onboarding(_uid)
+        _show_onboarding = (not st.session_state["_onboarding_seen_db"]
+                            and not st.session_state.get("onboarding_dismissed", False))
+        if _show_onboarding:
+            st.markdown(
+                "<div style='background:linear-gradient(135deg,#0078d4 0%,#1a3a5c 100%);"
+                "border-radius:10px;padding:16px 20px;margin:0 0 14px 0;color:#fff;"
+                "box-shadow:0 2px 12px rgba(0,120,212,0.22);'>"
+                "<div style='font-size:0.95rem;font-weight:700;margin-bottom:10px;"
+                "font-family:\"JetBrains Mono\",monospace;'>👋 처음 오셨나요? 3단계면 끝나요</div>"
+                "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:10px;'>"
+                "<div style='background:rgba(255,255,255,0.12);border-radius:7px;padding:10px 12px;'>"
+                "<div style='font-size:1.3rem;margin-bottom:3px;'>📂</div>"
+                "<div style='font-size:0.78rem;font-weight:600;'>1. 이미지 올리기</div>"
+                "<div style='font-size:0.68rem;color:#cfe3f5;margin-top:3px;'>"
+                "JPG·PNG 도면을 여러 장 한꺼번에 끌어다 놓으세요</div></div>"
+                "<div style='background:rgba(255,255,255,0.12);border-radius:7px;padding:10px 12px;'>"
+                "<div style='font-size:1.3rem;margin-bottom:3px;'>⚡</div>"
+                "<div style='font-size:0.78rem;font-weight:600;'>2. 변환 버튼 클릭</div>"
+                "<div style='font-size:0.68rem;color:#cfe3f5;margin-top:3px;'>"
+                "여러 장은 자동으로 동시 변환돼 빠릅니다 (DWG 자동 저장)</div></div>"
+                "<div style='background:rgba(255,255,255,0.12);border-radius:7px;padding:10px 12px;'>"
+                "<div style='font-size:1.3rem;margin-bottom:3px;'>💾</div>"
+                "<div style='font-size:0.78rem;font-weight:600;'>3. 결과 내려받기</div>"
+                "<div style='font-size:0.68rem;color:#cfe3f5;margin-top:3px;'>"
+                "품질 점수 확인 후 ZIP으로 한 번에 다운로드</div></div>"
+                "</div>"
+                "<div style='font-size:0.66rem;color:#9dc3e6;margin-top:10px;'>"
+                "💡 글자(치수) 인식이 필요할 때만 사이드바에서 OCR을 켜세요. "
+                "끄면 변환이 더 빠릅니다.</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("✕ 가이드 닫기 (다시 안 보기)", key="onboarding_close_btn"):
+                st.session_state["onboarding_dismissed"] = True
+                st.session_state["_onboarding_seen_db"] = True
+                mark_onboarding_seen(_uid)   # DB에 영구 저장 → 다음부터 안 뜸
+                st.rerun()
+
         # ── v4.2: 초기 화면 통계 대시보드 (파일 없을 때만 표시) ──
         _lbl_first   = _labels_dates[0] if _labels_dates else ""
         _chart_total = sum(d["count"] for d in _chart_data)
@@ -6502,14 +8774,29 @@ if not st.session_state.get("conversion_done", False):
             vc=_stats["total_conv"], vu=_stats["total_users"],
             ct=_chart_total, bh=_bars_html, lf=_lbl_first
         )
-        st.markdown(_dash_html, unsafe_allow_html=True)
-        st.markdown(
-            "<div class='work-panel' style='text-align:center; padding:36px 20px;'>"
-            "<div style='font-size:2.6rem;margin-bottom:8px'>📂</div>"
-            "<div style='font-size:1.05rem;font-weight:700;color:#1d1d1f;margin-bottom:4px'>변환할 도면 이미지를 올려주세요</div>"
-            "<div style='font-size:0.85rem;color:#6e6e73'>파일을 올리시면 원본, 최적화 이미지, DXF 결과물이 3단계로 표시되어 쉽게 확인하실 수 있습니다.</div>"
-            "</div>", unsafe_allow_html=True
-        )
+
+        # 📊 v7.4.2: '통계 보기' 토글이 켜져 있으면 상세 통계만, 아니면 USAGE 박스+안내를 표시
+        #            (켜졌을 때 위쪽 파란 USAGE 박스가 중복으로 보이지 않도록 분기 안으로 이동)
+        if st.session_state.get("show_stats_main", False):
+            st.markdown(
+                "<div style='font-size:1.15rem;font-weight:700;color:#1a3a5c;"
+                "margin:4px 0 8px 0;'>📊 사용 통계</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("✕ 통계 닫고 변환 화면으로", key="close_stats_main_btn"):
+                st.session_state["show_stats_main"] = False
+                st.rerun()
+            render_stats_main(_stats)
+        else:
+            # 변환 화면일 때만 상단 파란 USAGE DASHBOARD 박스 표시
+            st.markdown(_dash_html, unsafe_allow_html=True)
+            st.markdown(
+                "<div class='work-panel' style='text-align:center; padding:36px 20px;'>"
+                "<div style='font-size:2.6rem;margin-bottom:8px'>📂</div>"
+                "<div style='font-size:1.05rem;font-weight:700;color:#1d1d1f;margin-bottom:4px'>변환할 도면 이미지를 올려주세요</div>"
+                "<div style='font-size:0.85rem;color:#6e6e73'>파일을 올리시면 원본, 최적화 이미지, DWG 결과물이 3단계로 표시되어 쉽게 확인하실 수 있습니다.</div>"
+                "</div>", unsafe_allow_html=True
+            )
 
 # ══════════════════════════════════════════
 #  🌟 v4.0: 변환 완료 화면 (통계 카드 + 실패 파일 표시)
@@ -6540,6 +8827,99 @@ if st.session_state.get("conversion_done", False):
             for k in list(st.session_state.keys()): del st.session_state[k]
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
+
+    # 🆕 v7.3: 설정 변경 감지 — 결과를 만든 당시 설정과 사이드바가 달라졌으면 안내
+    _v73_cur_sig = _conv_settings_signature()
+    _v73_old_sig = st.session_state.get("v73_conv_settings_sig", "")
+    if _v73_old_sig and _v73_cur_sig and _v73_cur_sig != _v73_old_sig:
+        st.caption("⚠️ 사이드바 설정이 이 결과를 만들 때와 달라졌습니다 — 새 설정을 반영하려면 재변환하세요.")
+
+    # ⚠️ v7.0: 에러 가시화 — 실패 파일을 결과 화면 상단에 빨간 배지로 펼쳐서 표시
+    #   (기존엔 화면 아래쪽 접힌 expander에 있어 놓치기 쉬웠음)
+    if failed_files:
+        _fail_items_html = ""
+        for ff in failed_files:
+            _fail_items_html += (
+                f"<div style='background:#ffffff;border:1px solid #fecaca;"
+                f"border-left:3px solid #ef4444;border-radius:5px;padding:7px 11px;margin-top:6px;'>"
+                f"<span style='font-size:0.82rem;font-weight:600;color:#991b1b;'>📄 {ff['name']}</span>"
+                f"<div style='font-size:0.70rem;color:#7f1d1d;margin-top:2px;"
+                f"font-family:\"JetBrains Mono\",monospace;'>{ff['error'][:140]}</div>"
+                f"</div>"
+            )
+        st.markdown(
+            f"<div style='background:#fef2f2;border:1px solid #fca5a5;border-radius:7px;"
+            f"padding:11px 14px;margin:10px 0 4px 0;'>"
+            f"<div style='font-size:0.86rem;font-weight:700;color:#b91c1c;"
+            f"font-family:\"JetBrains Mono\",monospace;'>"
+            f"🚫 변환 실패 {len(failed_files)}건 — 아래 파일을 확인하세요</div>"
+            f"{_fail_items_html}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    # ════════════════════════════════════════════════════════════
+    # 🆕 v7.3: QA 문제 파일 일괄 재변환 실행부
+    #   (아래 통계 카드·QA 배지 계산보다 먼저 실행 → 같은 화면에서 즉시 갱신 반영)
+    # ════════════════════════════════════════════════════════════
+    if results and st.session_state.get("v73_do_batch_reconvert", False):
+        st.session_state["v73_do_batch_reconvert"] = False
+        _b_idx_list = [i for i in st.session_state.get("v73_reconv_prob_idx", [])
+                       if 0 <= i < len(results)]
+        _b_ok = _b_fail = 0
+        if _b_idx_list:
+            _b_prog = st.progress(0.0, text="🔁 문제 파일 일괄 재변환 준비 중...")
+            for _bn, _bi in enumerate(_b_idx_list, start=1):
+                _bt = results[_bi]
+                _bo = _bt.get("image")
+                _bk = _bt.get("conv_kwargs")
+                if not (_bo and _bk):
+                    _b_fail += 1
+                    continue
+                try:
+                    _nk, _ = _v73_refresh_kwargs_from_state(_bk, st.session_state)
+                    _b_prog.progress(_bn / max(1, len(_b_idx_list)),
+                                     text=f"🔁 재변환 중... ({_bn}/{len(_b_idx_list)}) {_bt['filename']}")
+                    _nd, _nr = convert_to_dxf_bytes(_bo, **_nk)
+                    # 외곽선 자동완성 토글 ON이면 동일하게 반영
+                    if st.session_state.get("v72_use_close_outline", False):
+                        try:
+                            _nd, _ = close_open_outlines_dxf(
+                                _nd,
+                                gap_tol=float(st.session_state.get("v72_close_gap", 3.0)),
+                                min_edges=3)
+                        except Exception:
+                            pass
+                    results[_bi] = {
+                        "filename":      _bt["filename"],
+                        "original_name": _bt.get("original_name", _bt["filename"]),
+                        "content":       _nd,
+                        "image":         _bo,
+                        "report":        _nr,
+                        "conv_kwargs":   _nk,
+                        # QA도 즉시 재검수 → 아래 QA 배지에 새 결과 반영
+                        "qa":            run_dxf_qa(_nd, ocr_was_on=_nk.get("use_ocr", False)),
+                    }
+                    _b_ok += 1
+                except Exception:
+                    _b_fail += 1
+            _b_prog.empty()
+            st.session_state["dxf_results"] = results
+            # ZIP 재생성 (단일 재변환 v6.2와 동일 방식)
+            try:
+                _nzb = io.BytesIO()
+                with zipfile.ZipFile(_nzb, "w", zipfile.ZIP_DEFLATED) as _zf:
+                    for _r in results:
+                        _zf.writestr(_r["filename"], _r["content"])
+                st.session_state["zip_data"] = _nzb.getvalue()
+            except Exception:
+                pass
+            if _b_ok:
+                st.success(f"✅ 문제 파일 일괄 재변환 완료 — 성공 {_b_ok}건"
+                           + (f" · 실패 {_b_fail}건" if _b_fail else "")
+                           + " (아래 QA 배지에 새 결과가 반영되었습니다)")
+            else:
+                st.warning("일괄 재변환에 성공한 파일이 없습니다.")
 
     # 🌟 v5.0: 합산 통계 카드 (선/원/텍스트/스케일/품질 점수)
     if results:
@@ -6587,7 +8967,7 @@ if st.session_state.get("conversion_done", False):
         st.markdown(f"""
         <div style='background:#ffffff;border:1px solid #d0d7e0;border-left:3px solid {_q_color};border-radius:6px;padding:10px 14px;margin:0 0 14px 0;box-shadow:0 1px 4px rgba(0,0,0,0.03);'>
             <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;'>
-                <div style='font-size:0.78rem;font-weight:600;color:#1a3a5c;'>🏆 DXF 품질 게이지</div>
+                <div style='font-size:0.78rem;font-weight:600;color:#1a3a5c;'>🏆 DWG 품질 게이지</div>
                 <div style='font-size:0.72rem;color:#7a8fa6;font-family:"JetBrains Mono",monospace;'>{len(results)}개 파일 평균</div>
             </div>
             <div style='height:14px;background:#f1f5f9;border-radius:7px;overflow:hidden;border:1px solid #e2e8f0;'>
@@ -6599,22 +8979,121 @@ if st.session_state.get("conversion_done", False):
         </div>
         """, unsafe_allow_html=True)
 
+        # ════════════════════════════════════════════════════════════
+        # 🔍 v7.0: CAD QA 자동 검수 리포트 패널
+        #   파일별 QA 결과를 합산해 결과 화면에 표시.
+        #   문제 없으면 초록 배지, 문제 있으면 항목별 개수 + 빨간 배지.
+        # ════════════════════════════════════════════════════════════
+        _qa_list = [r.get("qa", {}) for r in results if r.get("qa")]
+        if _qa_list:
+            _qa_open   = sum(q.get("open_polylines",  0) for q in _qa_list)
+            _qa_dup    = sum(q.get("duplicate_lines", 0) for q in _qa_list)
+            _qa_zero   = sum(q.get("zero_len_lines",  0) for q in _qa_list)
+            _qa_layer  = sum(q.get("layer_errors",    0) for q in _qa_list)
+            _qa_txt    = sum(1 for q in _qa_list if q.get("text_missing"))
+            _qa_total  = _qa_open + _qa_dup + _qa_zero + _qa_layer + _qa_txt
+            _qa_scores = [q.get("qa_score", 100) for q in _qa_list]
+            _qa_avg    = int(sum(_qa_scores) / max(1, len(_qa_scores)))
+
+            if _qa_avg >= 90: _qa_grade = "A+"; _qa_clr = "#16a34a"
+            elif _qa_avg >= 80: _qa_grade = "A"; _qa_clr = "#22c55e"
+            elif _qa_avg >= 70: _qa_grade = "B"; _qa_clr = "#0078d4"
+            elif _qa_avg >= 60: _qa_grade = "C"; _qa_clr = "#f59e0b"
+            else:               _qa_grade = "D"; _qa_clr = "#dc2626"
+
+            # 항목별 배지 HTML 생성
+            def _qa_badge(label, count, warn=True):
+                if count == 0:
+                    return (f"<span style='background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;"
+                            f"border-radius:5px;padding:3px 9px;font-size:0.72rem;"
+                            f"font-family:\"JetBrains Mono\",monospace;'>✓ {label} 0</span>")
+                clr = "#991b1b" if warn else "#92400e"
+                bg  = "#fef2f2" if warn else "#fffbeb"
+                bdr = "#fecaca" if warn else "#fde68a"
+                return (f"<span style='background:{bg};color:{clr};border:1px solid {bdr};"
+                        f"border-radius:5px;padding:3px 9px;font-size:0.72rem;"
+                        f"font-family:\"JetBrains Mono\",monospace;'>⚠ {label} {count}</span>")
+
+            _badges = " ".join([
+                _qa_badge("미폐합",  _qa_open,  warn=True),
+                _qa_badge("중복선",  _qa_dup,   warn=True),
+                _qa_badge("0길이선", _qa_zero,  warn=False),
+                _qa_badge("레이어",  _qa_layer, warn=False),
+                _qa_badge("텍스트누락", _qa_txt, warn=True),
+            ])
+            _qa_hdr_bg  = "#f0fdf4" if _qa_total == 0 else "#fef2f2"
+            _qa_hdr_bdr = "#bbf7d0" if _qa_total == 0 else "#fca5a5"
+            _qa_hdr_clr = "#166534" if _qa_total == 0 else "#991b1b"
+            _qa_hdr_txt = f"✅ CAD QA 검수 통과 · {_qa_avg}점({_qa_grade})" if _qa_total == 0 \
+                          else f"⚠ CAD QA 검수 · {_qa_total}건 문제 발견 · {_qa_avg}점({_qa_grade})"
+
+            st.markdown(
+                f"<div style='background:{_qa_hdr_bg};border:1px solid {_qa_hdr_bdr};"
+                f"border-left:3px solid {_qa_clr};border-radius:7px;"
+                f"padding:10px 14px;margin:0 0 10px 0;'>"
+                f"<div style='font-size:0.84rem;font-weight:700;color:{_qa_hdr_clr};"
+                f"font-family:\"JetBrains Mono\",monospace;margin-bottom:7px;'>"
+                f"🔍 {_qa_hdr_txt}</div>"
+                f"<div style='display:flex;flex-wrap:wrap;gap:6px;'>{_badges}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            # 문제 있는 파일만 expander로 목록 표시
+            if _qa_total > 0:
+                _prob_files = [(_pi, r["filename"], r["qa"]) for _pi, r in enumerate(results)
+                               if r.get("qa", {}).get("total_issues", 0) > 0]
+                if _prob_files:
+                    with st.expander(f"🔍 QA 문제 파일 {len(_prob_files)}개 상세 보기", expanded=False):
+                        for _pidx, _pfn, _pqa in _prob_files:
+                            _items = []
+                            if _pqa.get("open_polylines",  0): _items.append(f"미폐합 폴리라인 {_pqa['open_polylines']}개")
+                            if _pqa.get("duplicate_lines", 0): _items.append(f"중복선 {_pqa['duplicate_lines']}개")
+                            if _pqa.get("zero_len_lines",  0): _items.append(f"0길이 선 {_pqa['zero_len_lines']}개")
+                            if _pqa.get("layer_errors",    0): _items.append(f"레이어 오류 {_pqa['layer_errors']}개")
+                            if _pqa.get("text_missing"):        _items.append("텍스트 누락")
+                            st.markdown(
+                                f"<div style='background:#fef2f2;border:1px solid #fecaca;"
+                                f"border-left:3px solid #ef4444;border-radius:5px;"
+                                f"padding:7px 12px;margin-bottom:5px;'>"
+                                f"<span style='font-size:0.82rem;font-weight:600;color:#991b1b;'>📄 {_pfn}</span>"
+                                f"<div style='font-size:0.72rem;color:#7f1d1d;margin-top:3px;"
+                                f"font-family:\"JetBrains Mono\",monospace;'>"
+                                f"{' · '.join(_items)}</div></div>",
+                                unsafe_allow_html=True,
+                            )
+
+                        # 🆕 v7.3: 문제 파일만 현재 사이드바 설정으로 일괄 재변환
+                        if st.button(f"🔁 문제 파일 {len(_prob_files)}개만 일괄 재변환",
+                                     use_container_width=True, type="primary",
+                                     key="v73_reconv_problems_btn",
+                                     help="QA에서 문제가 발견된 파일만 현재 사이드바 설정으로 다시 변환합니다 (정상 파일은 그대로 유지)"):
+                            st.session_state["v73_do_batch_reconvert"] = True
+                            st.session_state["v73_reconv_prob_idx"] = [_pi for _pi, _, _ in _prob_files]
+                            st.rerun()
+
     # 🌟 v4.0: 실패 파일 안내
-    if failed_files:
-        with st.expander(f"⚠️ 변환 실패 파일 {len(failed_files)}개 보기", expanded=False):
-            for ff in failed_files:
-                st.markdown(f"""
-                <div style='background:#fef2f2;border:1px solid #fecaca;border-left:3px solid #ef4444;border-radius:6px;padding:8px 12px;margin-bottom:6px;'>
-                    <div style='font-size:0.84rem;font-weight:600;color:#991b1b;'>📄 {ff["name"]}</div>
-                    <div style='font-size:0.72rem;color:#7f1d1d;margin-top:3px;font-family:"JetBrains Mono", monospace;'>{ff["error"][:120]}</div>
-                </div>
-                """, unsafe_allow_html=True)
+    # ⚠️ v7.0: 실패 파일은 결과 화면 상단 빨간 배지로 이동 (여기 중복 표시 제거)
+
 
     if not results:
         # 성공 파일이 0개면 다운로드 섹션 생략
         st.warning("성공한 변환 파일이 없습니다. 위 실패 메시지를 확인하고 다시 시도해 주세요.")
     else:
-        preview_idx = st.selectbox("🔍 미리보기 파일", range(len(results)), format_func=lambda i: results[i]["filename"]) if len(results) > 1 else 0
+        # 🆕 v7.3: 품질 낮은 순 정렬 옵션 (문제 파일 빠른 확인용 — 끄면 기존과 동일)
+        if len(results) > 1:
+            _v73_sort_qa = st.toggle("⬇️ 품질 낮은 순 정렬", value=False, key="v73_sort_by_qa",
+                help="미리보기 파일 목록을 품질 점수가 낮은 파일부터 보여줍니다. 끄면 원래 순서입니다.")
+            _v73_opts = list(range(len(results)))
+            if _v73_sort_qa:
+                _v73_opts.sort(key=lambda _i: results[_i]["report"].get("quality_score", 100))
+                preview_idx = st.selectbox("🔍 미리보기 파일", _v73_opts,
+                    format_func=lambda i: f"{results[i]['filename']}  —  {results[i]['report'].get('quality_grade','-')} {results[i]['report'].get('quality_score',0)}점")
+            else:
+                preview_idx = st.selectbox("🔍 미리보기 파일", _v73_opts,
+                    format_func=lambda i: results[i]["filename"])
+        else:
+            preview_idx = 0
 
         # 🔁 v6.2: 단일 파일 재변환 — 4순위 신규 기능
         _cur_result = results[preview_idx] if results else None
@@ -6703,6 +9182,9 @@ if st.session_state.get("conversion_done", False):
                         # 🆕 v6.3
                         "v63_use_sr":             "use_super_resolution",
                         "v63_sr_threshold":       "sr_threshold_px",
+                        # 🆕 v7.3
+                        "v73_use_fast_thinning":  "use_fast_thinning",
+                        "v73_use_fld":            "use_fld_lines",
                     }
                     _changed = 0
                     for _ss_key, _kw_key in _key_map.items():
@@ -7023,11 +9505,11 @@ if st.session_state.get("conversion_done", False):
         with rcol_dxf:
             st.markdown("""<div class='preview-title after'>
                 <span class='prev-step-num s3'>📐</span>
-                <span>After — DXF 결과</span>
+                <span>After — DWG 결과</span>
             </div>""", unsafe_allow_html=True)
             with st.spinner("DXF 렌더링 중..."):
                 fig_or_err = render_dxf_preview(prev["content"], bg_color=PREVIEW_BG_COLOR, line_color=PREVIEW_LINE_COLOR)
-            if fig_or_err == "EMPTY": st.info("ℹ️ DXF에 선이 없습니다.")
+            if fig_or_err == "EMPTY": st.info("ℹ️ 결과에 선이 없습니다.")
             elif isinstance(fig_or_err, str): st.warning(f"⚠️ 렌더링 오류:\n```\n{fig_or_err}\n```")
             else:
                 if _PLOTLY_AVAILABLE and hasattr(fig_or_err, '_is_plotly'):
